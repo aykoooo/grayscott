@@ -190,6 +190,16 @@ pub fn build(b: *std.Build) void {
     gpu_bench_run.setEnvironmentVariable("PATH", new_path);
     b.step("bench-gpu", "Run GPU benchmark (256^2, 500 steps)").dependOn(&gpu_bench_run.step);
 
+    var gpu_bench_512 = b.addRunArtifact(gpu_bench_exe);
+    gpu_bench_512.addArgs(&.{ "512", "512", "500" });
+    gpu_bench_512.setEnvironmentVariable("PATH", new_path);
+    b.step("bench-gpu-512", "GPU benchmark at 512^2, 500 steps").dependOn(&gpu_bench_512.step);
+
+    var gpu_bench_1024 = b.addRunArtifact(gpu_bench_exe);
+    gpu_bench_1024.addArgs(&.{ "1024", "1024", "100" });
+    gpu_bench_1024.setEnvironmentVariable("PATH", new_path);
+    b.step("bench-gpu-1024", "GPU benchmark at 1024^2, 100 steps").dependOn(&gpu_bench_1024.step);
+
     // Debug compare target
     const debug_mod = b.createModule(.{
         .root_source_file = b.path("BENCHMARK/debug_compare.zig"),

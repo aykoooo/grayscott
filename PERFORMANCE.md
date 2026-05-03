@@ -34,3 +34,19 @@ Current best: **2,346,051,133 cells/sec** (8×8 tiling + command buffer batching
 | 16×8 | 121,756,371 | Slower |
 | 64×2 | 132,468,964 | Slower |
 | 32×32 | — | Failed
+
+## Phase K–L Results
+| Date | Technique | Cells/sec | Improvement | Status |
+|---|---|---|---|---|
+| 2026-05-03 | f16 feature detection (K.1 — YES on RTX 4060 Vulkan/v29) | — | — | ✅ Committed |
+| 2026-05-03 | f16 storage (K.2) | N/A | N/A | ❌ Reverted — precision drift, hash mismatch |
+| 2026-05-03 | vec2<f32> UV packing (L.1) | 1,463,870,088 | -38% | ❌ Reverted — slower |
+
+## Phase M: Multi-resolution Benchmarks
+| Resolution | Steps | Cells/sec | Notes |
+|---|---|---|---|
+| 256² | 500 | ~2.4B | Timer noise (~14ms), compute-bound |
+| 512² | 500 | ~2.55B | Stable, compute-bound |
+| 1024² | 100 | ~2.38B | Stable, compute-bound |
+
+**Finding**: Throughput constant across scales → **compute-bound**, not bandwidth-limited.

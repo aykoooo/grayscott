@@ -47,3 +47,21 @@ A: ✅  B: ✅  C: ⊘ (skipped)  D: ✅  E: ⊘ (evaluated)  F: ✅
 G: ⊘  H: ⊘ (superseded by F)  I: ⊘  J: ✅
 
 Current best: 2.35B cells/sec (8×8 tiling + command buffer batching)
+
+### Iter 3: Phase K.1 — f16 Feature Detection
+SUCCESS: wgpu-native v29/Vulkan on RTX 4060 supports ShaderF16. Previous assumption about
+StorageInputOutput16 blocking it was wrong — v29 includes the IO polyfill (#7884).
+
+### Iter 4: Phase K.2 — f16 Storage Implementation
+FAILED: f32→f16 truncation per-step accumulates numerical drift over 500 steps of reaction-diffusion.
+Hash changed from e16ed0e to d1acf26. Not fixable without accepting different reference hash.
+
+### Iter 5: Phase L.1 — vec2<f32> UV Packing
+FAILED: Interleaving U+V into single vec2 buffer halves tile-load reads but adds init/readback
+overhead (~38% regression). At 256² with batching, bottleneck is compute throughput not memory
+bandwidth. GPU coalesces adjacent f32 reads efficiently already.
+
+### Iter 6: Phase M — Multi-resolution Benchmarks
+SUCCESS: Added bench-gpu-512 and bench-gpu-1024 targets. Throughput constant at ~2.4-2.5B cells/sec
+at all three scales (256², 512², 1024²), confirming we are **compute-bound** not bandwidth-bound.
+This explains why memory optimizations (f16, vec2) couldn't help at this scale.

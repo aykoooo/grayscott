@@ -80,11 +80,12 @@ Target achieved: 23× over original >100M goal at 256².
 - [ ] **L.3** Benchmark. Keep if improvement.
 
 ## 🔥 Phase M — Multi-resolution Benchmarks
-- [ ] **M.1** Add benchmark targets for 512²/500 and 1024²/100 to build.zig
-  - The 256² benchmark runs in ~14ms — too fast for meaningful GPU measurement (timer noise dominates)
-  - At 1024², bandwidth limits become visible and give trustworthy measurements
-- [ ] **M.2** Run benchmarks at all scales, record throughput curve in PERFORMANCE.md
-- [ ] **M.3** Identify whether we're compute-bound or bandwidth-bound at each scale
+- [x] **M.1** Add benchmark targets for 512²/500 and 1024²/100 to build.zig
+  - Added `bench-gpu-512` and `bench-gpu-1024` build steps
+  - bench_gpu.zig already accepts CLI args for width/height/steps
+- [x] **M.2** Run benchmarks at all scales, record throughput curve in PERFORMANCE.md
+- [x] **M.3** Identify whether we're compute-bound or bandwidth-bound at each scale
+  - Throughput ~2.4-2.5B cells/sec at all three scales → compute-bound (not bandwidth-limited)
 
 ## 🔥 Phase N — Map Integration & Adaptive Convergence
 - [ ] **N.1** Build a map-bench target that runs actual pattern generation (not just the 500-step tight loop)
