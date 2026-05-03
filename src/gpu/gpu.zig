@@ -145,11 +145,30 @@ fn generateWgsl(buf: []u8, w: u32, h: u32, tile_x: u32, tile_y: u32) ![]const u8
         \\        let hi = (lid.y + 1u) * STRIDE;
         \\        tile_u[hi] = u_in[y * WIDTH + x_l];
         \\        tile_v[hi] = v_in[y * WIDTH + x_l];
+        \\        if (lid.y == 0u) {{
+        \\            tile_u[0] = u_in[y_t * WIDTH + x_l];
+        \\            tile_v[0] = v_in[y_t * WIDTH + x_l];
+        \\        }}
+        \\        if (lid.y == TY - 1u) {{
+        \\            let ci = (TY + 1u) * STRIDE;
+        \\            tile_u[ci] = u_in[y_b * WIDTH + x_l];
+        \\            tile_v[ci] = v_in[y_b * WIDTH + x_l];
+        \\        }}
         \\    }}
         \\    if (lid.x == TX - 1u) {{
         \\        let hi = (lid.y + 1u) * STRIDE + (TX + 1u);
         \\        tile_u[hi] = u_in[y * WIDTH + x_r];
         \\        tile_v[hi] = v_in[y * WIDTH + x_r];
+        \\        if (lid.y == 0u) {{
+        \\            let ci = TX + 1u;
+        \\            tile_u[ci] = u_in[y_t * WIDTH + x_r];
+        \\            tile_v[ci] = v_in[y_t * WIDTH + x_r];
+        \\        }}
+        \\        if (lid.y == TY - 1u) {{
+        \\            let ci = (TY + 1u) * STRIDE + (TX + 1u);
+        \\            tile_u[ci] = u_in[y_b * WIDTH + x_r];
+        \\            tile_v[ci] = v_in[y_b * WIDTH + x_r];
+        \\        }}
         \\    }}
         \\    if (lid.y == 0u) {{
         \\        let hi = lid.x + 1u;
@@ -160,25 +179,6 @@ fn generateWgsl(buf: []u8, w: u32, h: u32, tile_x: u32, tile_y: u32) ![]const u8
         \\        let hi = (TY + 1u) * STRIDE + (lid.x + 1u);
         \\        tile_u[hi] = u_in[y_b * WIDTH + x];
         \\        tile_v[hi] = v_in[y_b * WIDTH + x];
-        \\    }}
-        \\    if (lid.x == 0u && lid.y == 0u) {{
-        \\        tile_u[0] = u_in[y_t * WIDTH + x_l];
-        \\        tile_v[0] = v_in[y_t * WIDTH + x_l];
-        \\    }}
-        \\    if (lid.x == TX - 1u && lid.y == 0u) {{
-        \\        let ci = TX + 1u;
-        \\        tile_u[ci] = u_in[y_t * WIDTH + x_r];
-        \\        tile_v[ci] = v_in[y_t * WIDTH + x_r];
-        \\    }}
-        \\    if (lid.x == 0u && lid.y == TY - 1u) {{
-        \\        let ci = (TY + 1u) * STRIDE;
-        \\        tile_u[ci] = u_in[y_b * WIDTH + x_l];
-        \\        tile_v[ci] = v_in[y_b * WIDTH + x_l];
-        \\    }}
-        \\    if (lid.x == TX - 1u && lid.y == TY - 1u) {{
-        \\        let ci = (TY + 1u) * STRIDE + (TX + 1u);
-        \\        tile_u[ci] = u_in[y_b * WIDTH + x_r];
-        \\        tile_v[ci] = v_in[y_b * WIDTH + x_r];
         \\    }}
         \\    workgroupBarrier();
         \\    let u_c = tile_u[ti];

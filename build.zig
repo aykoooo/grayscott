@@ -1,6 +1,7 @@
 const std = @import("std");
 
 pub fn build(b: *std.Build) void {
+    const builtin = @import("builtin");
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
@@ -179,8 +180,6 @@ pub fn build(b: *std.Build) void {
         .root_module = gpu_bench_mod,
     });
     gpu_bench_exe.linkSystemLibrary("wgpu_native");
-
-const builtin = @import("builtin");
 
     const gpu_bench_run = b.addRunArtifact(gpu_bench_exe);
     const lib_path = b.pathJoin(&.{ b.build_root.path.?, "vendor", "wgpu-native", "lib" });
