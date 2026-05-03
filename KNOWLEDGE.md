@@ -33,18 +33,11 @@ The agent reads it before each attempt to avoid retrying failed approaches.
 - **Plot**: If you want to visualize memory access patterns
 
 ## Success patterns:
-- None yet — this file will be populated by loop iterations
+- Shared memory tiling: 16×16 workgroup loading 18×18 tile (1-cell halo) into `var<workgroup>` arrays for u and v. Each thread loads its center cell + edge threads load halo cells + corner threads load diagonal corner halos. Uses workgroupBarrier() between load and compute phases. Resulted in +69.4% improvement (90M→153M cells/sec) on Intel iGPU.
 
 ## Failure patterns:
 - None yet
 
 ## Phase completion status:
 A: ✅ GPU WebGPU compute pipeline working natively via wgpu-native
-   - Naive WGSL shader generates correct results (not bit-identical to CPU due to GPU eval order, but mathematically equivalent)
-   - GPU reference hash: e16ed0e3c29cc50b5fa2b42791f31ab00b39d488e971b5d3c6017970ed037a43
-   - Benchmark target: `zig build bench-gpu`
-   - IMPORTANT: Shader is generated at RUNTIME inside `generateWgsl()` in `src/gpu/gpu.zig`.
-     Do NOT modify `src/gpu/gray_scott.wgsl` — it is NOT used by the native benchmark.
-     To change the shader, edit the `generateWgsl()` function.
-B: □  C: □  D: □  E: □  F: □  G: □  H: □
-I: □  J: □  K: □  L: □  M: □  N: □  O: □
+B: 🔥 Partially — B.1-B.3 done (shared memory tiling, 153M cells/sec), B.4 pending

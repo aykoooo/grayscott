@@ -61,3 +61,9 @@ enable f16;
 - `wgpuInstanceWaitAny` panics in v29 as "not implemented" — use polling loop
 - GPU f32 instruction ordering differs from CPU — hashes will NOT match
 - `shader-f16` is optional in WebGPU — must query device features
+
+## 2026-05-03 — WGSL Shared Memory Tiling for Stencil
+
+- Source: Tour of WGSL (Google), François Guthmann blog, NVIDIA L2 locality post, Various WebGPU prefix sum examples
+- Key finding: WGSL `var<workgroup>` declares zero-initialized workgroup-shared memory visible to all threads in a workgroup. Must use `workgroupBarrier()` for synchronization. For a 9-point stencil on a 16×16 workgroup, load an 18×18 tile (16 + 1-cell halo each side). Edge threads load halo: left-edge loads neighbor's right column, etc. Critical performance insight for Intel iGPUs: shared memory goes to SLM not registers when dynamically indexed — benefit may be modest (~10-30%) vs dedicated GPUs.
+- Implementation approach: Declare arrays `tile_u: array<f32, 20*20>` and `tile_v: array<f32, 20*20>`, compute 1D local_idx = lid.y*(TILE_W+2) + lid.x, load main cell + edge threads load halo neighbors, barrier, then 9 reads from tile arrays instead of global buffers.

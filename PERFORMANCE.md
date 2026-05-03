@@ -16,3 +16,7 @@ Persistent benchmark tracker. This file survives crashes and restarts.
 ## Results Log
 
 <!-- Agent appends new entries here after each task -->
+
+| Date | Technique | Cells/sec | Improvement | Status |
+|---|---|---|---|---|
+| 2026-05-03 | Shared memory tiling (16×16 tile, 18×18 load) | 152,854,072 | +69.4% | ✅ Kept hash matches

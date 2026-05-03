@@ -18,14 +18,14 @@ Optimize the WebGPU compute shader for the Gray-Scott reaction-diffusion engine.
 - [x] **A.2** Establish baseline benchmark: 58M cells/sec
 
 ## 🔥 Phase B — Shared Memory Tiling (Expected +30-100%)
-- [ ] **B.1** Research WGSL `var<workgroup>` and `workgroupBarrier()`
+- [x] **B.1** Research WGSL `var<workgroup>` and `workgroupBarrier()`
   - Search for "WGSL workgroup storage stencil", "WebGPU shared memory compute shader example", "GPU stencil tile halo"
   - Specifically: how to load a 18×18 tile (16×16 workgroup + 2-cell halo) into shared memory
-- [ ] **B.2** Implement shared memory tile in `generateWgsl()`
+- [x] **B.2** Implement shared memory tile in `generateWgsl()`
   - Load u_in tile into `var<workgroup>` at start of kernel
   - Barrier before computing laplacian from tile
   - Keep v data either in separate workgroup array or global
-- [ ] **B.3** Benchmark vs baseline. Keep if median > 70M cells/sec.
+- [x] **B.3** Benchmark vs baseline. Keep if median > 70M cells/sec.
 - [ ] **B.4** Tune tile size: try 8×8, 16×16, 32×32 with appropriate halo
 
 ## 🔥 Phase C — f16 Storage (Expected +50-100%)

@@ -118,47 +118,95 @@ fn generateWgsl(buf: []u8, w: u32, h: u32) ![]const u8 {
         "@group(0) @binding(4) var<uniform> params: Params;\n" ++
         "const WIDTH: u32 = {d}u;\n" ++
         "const HEIGHT: u32 = {d}u;\n" ++
+        "const TILE: u32 = 16u;\n" ++
+        "const STRIDE: u32 = 18u;\n" ++
+        "var<workgroup> tile_u: array<f32, 324>;\n" ++
+        "var<workgroup> tile_v: array<f32, 324>;\n" ++
         "@compute @workgroup_size(16, 16)\n" ++
-        "fn main(@builtin(global_invocation_id) id: vec3<u32>) {{\n" ++
+        "fn main(@builtin(global_invocation_id) id: vec3<u32>,\n" ++
+        "        @builtin(local_invocation_id) lid: vec3<u32>) {{\n" ++
         "    let x = id.x;\n" ++
         "    let y = id.y;\n" ++
         "    if (x >= WIDTH || y >= HEIGHT) {{ return; }}\n" ++
-        "    let idx = y * WIDTH + x;\n" ++
-        "    let u_c = u_in[idx];\n" ++
-        "    let v_c = v_in[idx];\n" ++
+        "    let ti = (lid.y + 1u) * STRIDE + (lid.x + 1u);\n" ++
+        "    tile_u[ti] = u_in[y * WIDTH + x];\n" ++
+        "    tile_v[ti] = v_in[y * WIDTH + x];\n" ++
         "    let x_l = select(x - 1u, WIDTH - 1u, x == 0u);\n" ++
         "    let x_r = select(x + 1u, 0u, x + 1u >= WIDTH);\n" ++
         "    let y_t = select(y - 1u, HEIGHT - 1u, y == 0u);\n" ++
         "    let y_b = select(y + 1u, 0u, y + 1u >= HEIGHT);\n" ++
-        "    let u_center = u_in[idx];\n" ++
-        "    let u_left   = u_in[y * WIDTH + x_l];\n" ++
-        "    let u_right  = u_in[y * WIDTH + x_r];\n" ++
-        "    let u_up     = u_in[y_t * WIDTH + x];\n" ++
-        "    let u_down   = u_in[y_b * WIDTH + x];\n" ++
-        "    let u_ne     = u_in[y_t * WIDTH + x_r];\n" ++
-        "    let u_nw     = u_in[y_t * WIDTH + x_l];\n" ++
-        "    let u_se     = u_in[y_b * WIDTH + x_r];\n" ++
-        "    let u_sw     = u_in[y_b * WIDTH + x_l];\n" ++
+        "    if (lid.x == 0u) {{\n" ++
+        "        let hi = (lid.y + 1u) * STRIDE;\n" ++
+        "        tile_u[hi] = u_in[y * WIDTH + x_l];\n" ++
+        "        tile_v[hi] = v_in[y * WIDTH + x_l];\n" ++
+        "    }}\n" ++
+        "    if (lid.x == TILE - 1u) {{\n" ++
+        "        let hi = (lid.y + 1u) * STRIDE + (TILE + 1u);\n" ++
+        "        tile_u[hi] = u_in[y * WIDTH + x_r];\n" ++
+        "        tile_v[hi] = v_in[y * WIDTH + x_r];\n" ++
+        "    }}\n" ++
+        "    if (lid.y == 0u) {{\n" ++
+        "        let hi = lid.x + 1u;\n" ++
+        "        tile_u[hi] = u_in[y_t * WIDTH + x];\n" ++
+        "        tile_v[hi] = v_in[y_t * WIDTH + x];\n" ++
+        "    }}\n" ++
+        "    if (lid.y == TILE - 1u) {{\n" ++
+        "        let hi = (TILE + 1u) * STRIDE + (lid.x + 1u);\n" ++
+        "        tile_u[hi] = u_in[y_b * WIDTH + x];\n" ++
+        "        tile_v[hi] = v_in[y_b * WIDTH + x];\n" ++
+        "    }}\n" ++
+        "    if (lid.x == 0u && lid.y == 0u) {{\n" ++
+        "        tile_u[0] = u_in[y_t * WIDTH + x_l];\n" ++
+        "        tile_v[0] = v_in[y_t * WIDTH + x_l];\n" ++
+        "    }}\n" ++
+        "    if (lid.x == TILE - 1u && lid.y == 0u) {{\n" ++
+        "        let ci = TILE + 1u;\n" ++
+        "        tile_u[ci] = u_in[y_t * WIDTH + x_r];\n" ++
+        "        tile_v[ci] = v_in[y_t * WIDTH + x_r];\n" ++
+        "    }}\n" ++
+        "    if (lid.x == 0u && lid.y == TILE - 1u) {{\n" ++
+        "        let ci = (TILE + 1u) * STRIDE;\n" ++
+        "        tile_u[ci] = u_in[y_b * WIDTH + x_l];\n" ++
+        "        tile_v[ci] = v_in[y_b * WIDTH + x_l];\n" ++
+        "    }}\n" ++
+        "    if (lid.x == TILE - 1u && lid.y == TILE - 1u) {{\n" ++
+        "        let ci = (TILE + 1u) * STRIDE + (TILE + 1u);\n" ++
+        "        tile_u[ci] = u_in[y_b * WIDTH + x_r];\n" ++
+        "        tile_v[ci] = v_in[y_b * WIDTH + x_r];\n" ++
+        "    }}\n" ++
+        "    workgroupBarrier();\n" ++
+        "    let u_c = tile_u[ti];\n" ++
+        "    let v_c = tile_v[ti];\n" ++
+        "    let u_center = u_c;\n" ++
+        "    let u_left   = tile_u[(lid.y + 1u) * STRIDE + (lid.x    )];\n" ++
+        "    let u_right  = tile_u[(lid.y + 1u) * STRIDE + (lid.x + 2u)];\n" ++
+        "    let u_up     = tile_u[(lid.y    ) * STRIDE + (lid.x + 1u)];\n" ++
+        "    let u_down   = tile_u[(lid.y + 2u) * STRIDE + (lid.x + 1u)];\n" ++
+        "    let u_ne     = tile_u[(lid.y    ) * STRIDE + (lid.x + 2u)];\n" ++
+        "    let u_nw     = tile_u[(lid.y    ) * STRIDE + (lid.x    )];\n" ++
+        "    let u_se     = tile_u[(lid.y + 2u) * STRIDE + (lid.x + 2u)];\n" ++
+        "    let u_sw     = tile_u[(lid.y + 2u) * STRIDE + (lid.x    )];\n" ++
         "    let lap_u = 0.2 * (u_left + u_right + u_up + u_down)\n" ++
         "            + 0.05 * (u_ne + u_nw + u_se + u_sw)\n" ++
         "            - 1.0 * u_center;\n" ++
-        "    let v_center = v_in[idx];\n" ++
-        "    let v_left   = v_in[y * WIDTH + x_l];\n" ++
-        "    let v_right  = v_in[y * WIDTH + x_r];\n" ++
-        "    let v_up     = v_in[y_t * WIDTH + x];\n" ++
-        "    let v_down   = v_in[y_b * WIDTH + x];\n" ++
-        "    let v_ne     = v_in[y_t * WIDTH + x_r];\n" ++
-        "    let v_nw     = v_in[y_t * WIDTH + x_l];\n" ++
-        "    let v_se     = v_in[y_b * WIDTH + x_r];\n" ++
-        "    let v_sw     = v_in[y_b * WIDTH + x_l];\n" ++
+        "    let v_center = v_c;\n" ++
+        "    let v_left   = tile_v[(lid.y + 1u) * STRIDE + (lid.x    )];\n" ++
+        "    let v_right  = tile_v[(lid.y + 1u) * STRIDE + (lid.x + 2u)];\n" ++
+        "    let v_up     = tile_v[(lid.y    ) * STRIDE + (lid.x + 1u)];\n" ++
+        "    let v_down   = tile_v[(lid.y + 2u) * STRIDE + (lid.x + 1u)];\n" ++
+        "    let v_ne     = tile_v[(lid.y    ) * STRIDE + (lid.x + 2u)];\n" ++
+        "    let v_nw     = tile_v[(lid.y    ) * STRIDE + (lid.x    )];\n" ++
+        "    let v_se     = tile_v[(lid.y + 2u) * STRIDE + (lid.x + 2u)];\n" ++
+        "    let v_sw     = tile_v[(lid.y + 2u) * STRIDE + (lid.x    )];\n" ++
         "    let lap_v = 0.2 * (v_left + v_right + v_up + v_down)\n" ++
         "            + 0.05 * (v_ne + v_nw + v_se + v_sw)\n" ++
         "            - 1.0 * v_center;\n" ++
         "    let uvv = u_c * v_c * v_c;\n" ++
         "    let u_next = u_c + params.dt * (params.da * lap_u - uvv + params.feed * (1.0 - u_c));\n" ++
         "    let v_next = v_c + params.dt * (params.db * lap_v + uvv - (params.feed + params.kill) * v_c);\n" ++
-        "    u_out[idx] = clamp(u_next, 0.0, 1.0);\n" ++
-        "    v_out[idx] = clamp(v_next, 0.0, 1.0);\n" ++
+        "    let out_idx = y * WIDTH + x;\n" ++
+        "    u_out[out_idx] = clamp(u_next, 0.0, 1.0);\n" ++
+        "    v_out[out_idx] = clamp(v_next, 0.0, 1.0);\n" ++
         "}}\n",
         .{ w, h }
     );
@@ -209,7 +257,7 @@ pub export fn gs_gpu_init(width: u32, height: u32) bool {
     if (g.queue == null) return false;
 
     // ---- Shader ----
-    var wgsl_buf: [4096]u8 = undefined;
+    var wgsl_buf: [8192]u8 = undefined;
     const wgsl_src = generateWgsl(&wgsl_buf, width, height) catch return false;
 
     var shader_source: c.WGPUShaderSourceWGSL = undefined;
