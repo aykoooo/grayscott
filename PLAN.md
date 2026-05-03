@@ -26,7 +26,7 @@ Optimize the WebGPU compute shader for the Gray-Scott reaction-diffusion engine.
   - Barrier before computing laplacian from tile
   - Keep v data either in separate workgroup array or global
 - [x] **B.3** Benchmark vs baseline. Keep if median > 70M cells/sec.
-- [ ] **B.4** Tune tile size: try 8×8, 16×16, 32×32 with appropriate halo
+- [x] **B.4** Tune tile size: try 8×8, 16×16, 32×32 with appropriate halo
 
 ## 🔥 Phase C — f16 Storage (Expected +50-100%)
 - [x] **C.1** Research WebGPU `shader-f16` feature availability
@@ -50,7 +50,7 @@ Optimize the WebGPU compute shader for the Gray-Scott reaction-diffusion engine.
 - [x] **J.1** Best combination: 8×8 shared memory tiling + command buffer batching = **2,346,051,133 cells/sec**
 - [x] **J.2** Verified at 256²/500 steps with hash `e16ed0e3c29cc50b5fa2b42791f31ab00b39d488e971b5d3c6017970ed037a43`
 - [x] **J.3** Documented in PERFORMANCE.md and KNOWLEDGE.md
-- [ ] **J.4** Write `OPTIMIZATION_COMPLETE` to `status.md`
+- [x] **J.4** Write `OPTIMIZATION_COMPLETE` to `status.md`
 
 ## Summary
 | Technique | Cells/sec | vs Baseline |
