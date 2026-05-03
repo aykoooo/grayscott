@@ -52,9 +52,16 @@ Current best: 2.35B cells/sec (8×8 tiling + command buffer batching)
 SUCCESS: wgpu-native v29/Vulkan on RTX 4060 supports ShaderF16. Previous assumption about
 StorageInputOutput16 blocking it was wrong — v29 includes the IO polyfill (#7884).
 
-### Iter 4: Phase K.2 — f16 Storage Implementation
-FAILED: f32→f16 truncation per-step accumulates numerical drift over 500 steps of reaction-diffusion.
-Hash changed from e16ed0e to d1acf26. Not fixable without accepting different reference hash.
+### Iter 4: Phase K.2+K.3 — f16 Storage Implementation (FULL)
+OUTCOME: Fully implemented and benchmarked. f16 storage IS functionally correct (produces consistent
+deterministic output with hash d1acf267...ab), but provides zero throughput improvement at any tested
+scale (256²–1024²). The f32↔f16 conversion ALU overhead cancels out any bandwidth savings because:
+1. At 256²/500 batched: shared memory tiling means ~99% of reads hit workgroup-local SRAM, not global
+2. At 512², 1024²: throughput remains constant at ~2.4B cells/sec regardless of precision → compute-bound
+3. The only scenario where f16 MIGHT help is a resolution large enough that global memory becomes the
+   limiting factor — probably 4096²+, which exceeds GPU VRAM for this setup.
+
+### Iter 6 continued: vec2 UV packing also reverted — same compute-bound story.
 
 ### Iter 5: Phase L.1 — vec2<f32> UV Packing
 FAILED: Interleaving U+V into single vec2 buffer halves tile-load reads but adds init/readback

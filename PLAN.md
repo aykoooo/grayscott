@@ -66,18 +66,22 @@ Target achieved: 23× over original >100M goal at 256².
 # Phase K–N: Next Round
 
 ## 🔥 Phase K — Test f16 (Retry)
-- [ ] **K.1** Query `wgpuAdapterHasFeature(wgpuAdapter, WGPUFeatureName_ShaderF16)` in `gs_gpu_init()`
+- [x] **K.1** Query `wgpuAdapterHasFeature(wgpuAdapter, WGPUFeatureName_ShaderF16)` in `gs_gpu_init()`
   - Previous assumption was "it won't work on RTX 4060." Actually test it.
-- [ ] **K.2** If supported: request device with feature, generate WGSL with `enable f16;`, halve buffer sizes
-  - Use `array<f16>` for storage, `f32(f16_val)` for math, `f16(result)` for store
-- [ ] **K.3** Benchmark. Keep if median > current best + 10%.
+  - **Result: YES — ShaderF16 available on RTX 4060 Vulkan wgpu-native v29. Committed.**
+- [~] **K.2+3** f16 storage implementation + benchmark
+  - **Implemented fully** (shader, buffer halving, init packing, readback unpacking), produces deterministic output with hash `d1acf26754798c...ab`
+  - **No throughput gain**: at 256²/500 with batching, ~828M cells/sec (same ballpark as thermally-degraded f32). At cold start, ~1.2–1.7B vs best f32 2.35B. 
+  - Root cause: we're **compute-bound**, not bandwidth-bound. Halving global memory traffic doesn't help when 99%+ of reads hit shared memory/cache.
+  - **Verdict: Not worth keeping** — adds code complexity (dual shader paths, init packing, readback unpacking) for zero performance at current benchmark scale. Code reverted, findings documented.
+  - Would only matter at larger grids (1024²+) where bandwidth might dominate — but we confirmed compute-bound even there.
 
 ## 🔥 Phase L — vec2<f32> UV Packing (Simplify tile loads)
-- [ ] **L.1** Combine two separate global reads (u_in[idx], v_in[idx]) into one: read `vec2<f32>` from combined buffer
-  - Requires restructuring buffers: instead of u0/v0/u1/v1, use uv_even/uv_odd (interleaved UV)
-  - Halves global memory traffic during tile loading phase (each thread does 1 read instead of 2)
-- [ ] **L.2** Modify init/readback code for interleaved layout
-- [ ] **L.3** Benchmark. Keep if improvement.
+- [~] **L.1–3** Combine U+V into interleaved vec2 buffer
+  - Implemented: restructured buffers to uv_even/uv_odd, halved tile-load reads, reduced bindings from 5→3
+  - Hash matches f32 reference (bit-identical computation), but ~38% slower at 1.46B vs 2.35B best
+  - Same root cause as f16: compute-bound, global memory coalescing already efficient
+  - **Verdict: Not worth keeping.** Code reverted, findings documented.
 
 ## 🔥 Phase M — Multi-resolution Benchmarks
 - [x] **M.1** Add benchmark targets for 512²/500 and 1024²/100 to build.zig

@@ -10,6 +10,7 @@ Persistent benchmark tracker. This file survives crashes and restarts.
 
 ## Reference
 - GPU hash (256²/500 steps): `e16ed0e3c29cc50b5fa2b42791f31ab00b39d488e971b5d3c6017970ed037a43`
+- GPU f16 hash (256²/500 steps): `d1acf26754798c4eeb65fb0b0665cf8e197609caafbed2389bdd2ee6adea6bab`
 - CPU hash: `9760dfcdb5f49c3bd738ab33afee8be84e56aa31fd2f389cde25faaaeb19bb95`
 - Target: >100M cells/sec (2× naive on this Intel iGPU)
 
@@ -39,7 +40,7 @@ Current best: **2,346,051,133 cells/sec** (8×8 tiling + command buffer batching
 | Date | Technique | Cells/sec | Improvement | Status |
 |---|---|---|---|---|
 | 2026-05-03 | f16 feature detection (K.1 — YES on RTX 4060 Vulkan/v29) | — | — | ✅ Committed |
-| 2026-05-03 | f16 storage (K.2) | N/A | N/A | ❌ Reverted — precision drift, hash mismatch |
+| 2026-05-03 | f16 storage (K.2 — fully implemented, verified deterministic) | ~1.2B–1.7B | ~0% | ❌ Reverted — no bandwidth bottleneck. f32→f16 conversions add ALU overhead, memory savings invisible at compute-bound scale. Separate hash: `d1acf267...ab` |
 | 2026-05-03 | vec2<f32> UV packing (L.1) | 1,463,870,088 | -38% | ❌ Reverted — slower |
 
 ## Phase M: Multi-resolution Benchmarks

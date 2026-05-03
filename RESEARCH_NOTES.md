@@ -67,3 +67,12 @@ enable f16;
 - Source: Tour of WGSL (Google), François Guthmann blog, NVIDIA L2 locality post, Various WebGPU prefix sum examples
 - Key finding: WGSL `var<workgroup>` declares zero-initialized workgroup-shared memory visible to all threads in a workgroup. Must use `workgroupBarrier()` for synchronization. For a 9-point stencil on a 16×16 workgroup, load an 18×18 tile (16 + 1-cell halo each side). Edge threads load halo: left-edge loads neighbor's right column, etc. Critical performance insight for Intel iGPUs: shared memory goes to SLM not registers when dynamically indexed — benefit may be modest (~10-30%) vs dedicated GPUs.
 - Implementation approach: Declare arrays `tile_u: array<f32, 20*20>` and `tile_v: array<f32, 20*20>`, compute 1D local_idx = lid.y*(TILE_W+2) + lid.x, load main cell + edge threads load halo neighbors, barrier, then 9 reads from tile arrays instead of global buffers.
+
+## 2026-05-03 — Phase K: f16 Storage Full Experiment
+
+- **Feature detection**: ShaderF16 IS available on RTX 4060 Vulkan/wgpu-native v29 (v29 IO polyfill fixed old StorageInputOutput16 blocker). Committed as `has_f16` flag in GpuState + `wgpuAdapterHasFeature()` call.
+- **Implementation**: Full round-trip: enable f16 shader, array<f16> storage, f32()/f16() casts, Zig-side f32↔u16 packing/unpacking, half-size ping-pong buffers.
+- **Hash**: Deterministic across runs: `d1acf26754798c4eeb65fb0b0665cf8e197609caafbed2389bdd2ee6adea6bab`
+- **Throughput**: ~1.2–1.7B cells/sec at 256²/500 (cold start), vs f32 best of 2.35B. At thermally-degraded state: f16=828M, f32=759M (+9% advantage).
+- **Root cause**: Compute-bound at all tested scales. Shared memory tiling makes global bandwidth savings invisible.
+- **Verdict**: Reverted. Code complexity not justified by zero perf gain. Knowledge preserved for future larger-scale work.
