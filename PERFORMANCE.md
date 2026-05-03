@@ -13,7 +13,7 @@ Persistent benchmark tracker. This file survives crashes and restarts.
 - CPU hash: `9760dfcdb5f49c3bd738ab33afee8be84e56aa31fd2f389cde25faaaeb19bb95`
 - Target: >100M cells/sec (2× naive on this Intel iGPU)
 
-Current best: **167.7M cells/sec** (8×8 workgroup, shared memory tiling, +86% over baseline)
+Current best: **2,346,051,133 cells/sec** (8×8 tiling + command buffer batching, +2,500% over baseline)
 
 ## Results Log
 
@@ -22,7 +22,8 @@ Current best: **167.7M cells/sec** (8×8 workgroup, shared memory tiling, +86% o
 | Date | Technique | Cells/sec | Improvement | Status |
 |---|---|---|---|---|
 | 2026-05-03 | Shared memory tiling (16×16 tile, 18×18 load) | 152,854,072 | +69.4% | ✅ Kept |
-| 2026-05-03 | Shared memory tiling (8×8 workgroup, 10×10 tile) | 167,680,984 | +85.8% | ✅ Best |
+| 2026-05-03 | Shared memory tiling (8×8 workgroup, 10×10 tile) | 167,680,984 | +85.8% | ✅ Best (tiling) |
+| 2026-05-03 | + Command buffer batching (500 dispatches in 1 submit) | 2,346,051,133 | +2,500% | ✅ Current Best |
 
 ### Workgroup Size Sweep
 | Size | Cells/sec | Result |

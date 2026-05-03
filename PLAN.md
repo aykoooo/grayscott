@@ -61,13 +61,13 @@ Optimize the WebGPU compute shader for the Gray-Scott reaction-diffusion engine.
 - [ ] **E.4** Benchmark. Keep if >100M cells/sec.
 
 ## 🔥 Phase F — Command Buffer Batching (Expected +5-15%)
-- [ ] **F.1** Research: each `wgpuQueueSubmit` has ~20-50μs overhead
+- [x] **F.1** Research: each `wgpuQueueSubmit` has ~20-50μs overhead
   - Currently we do 500 submits (one per step). Try batching 8-16 steps per submit.
-- [ ] **F.2** Modify `gs_gpu_step()` or add `gs_gpu_steps(N)`:
+- [x] **F.2** Modify `gs_gpu_step()` or add `gs_gpu_steps(N)`:
   - Record N compute dispatches into ONE command encoder
   - Submit once
   - Only poll once
-- [ ] **F.3** Benchmark. Keep if any improvement.
+- [x] **F.3** Benchmark. Keep if any improvement.
 
 ## 🔥 Phase G — Subgroup Shuffle (Expected +10-20%)
 - [ ] **G.1** Research WGSL `subgroupShuffle`, `subgroupShuffleDown`, `subgroupShuffleUp`

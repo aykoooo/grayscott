@@ -27,10 +27,7 @@ pub fn main() !void {
     defer gpu.gs_gpu_free();
 
     var timer = try std.time.Timer.start();
-    var iter: u32 = 0;
-    while (iter < steps) : (iter += 1) {
-        gpu.gs_gpu_step(da, db, dt, feed, kill);
-    }
+    gpu.gs_gpu_steps(da, db, dt, feed, kill, steps);
     const elapsed_ns = timer.read();
     const elapsed_s = @as(f64, @floatFromInt(elapsed_ns)) / 1e9;
     const total_cells: f64 = @as(f64, @floatFromInt(w * h)) * @as(f64, @floatFromInt(steps));

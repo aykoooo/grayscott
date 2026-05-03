@@ -469,6 +469,11 @@ const ParamsGpu = extern struct {
 
 pub export fn gs_gpu_step(da: f32, db: f32, dt: f32, feed: f32, kill: f32) void {
     if (!g.initialized) return;
+    gs_gpu_steps(da, db, dt, feed, kill, 1);
+}
+
+pub export fn gs_gpu_steps(da: f32, db: f32, dt: f32, feed: f32, kill: f32, n: u32) void {
+    if (!g.initialized or n == 0) return;
 
     const params = ParamsGpu{ .da = da, .db = db, .dt = dt, .feed = feed, .kill = kill };
     c.wgpuQueueWriteBuffer(g.queue, g.buf_params, 0, &params, @sizeOf(ParamsGpu));
@@ -479,12 +484,19 @@ pub export fn gs_gpu_step(da: f32, db: f32, dt: f32, feed: f32, kill: f32) void 
     const pass = c.wgpuCommandEncoderBeginComputePass(encoder, null);
     c.wgpuComputePassEncoderSetPipeline(pass, g.pipeline);
 
-    const bg = if (g.current_u == 0) g.bind_group_even else g.bind_group_odd;
-    c.wgpuComputePassEncoderSetBindGroup(pass, 0, bg, 0, null);
-
     const wg_x = (g.width + g.wg_x - 1) / g.wg_x;
     const wg_y = (g.height + g.wg_y - 1) / g.wg_y;
-    c.wgpuComputePassEncoderDispatchWorkgroups(pass, wg_x, wg_y, 1);
+
+    var i: u32 = 0;
+    while (i < n) : (i += 1) {
+        const bg = if (g.current_u == 0) g.bind_group_even else g.bind_group_odd;
+        c.wgpuComputePassEncoderSetBindGroup(pass, 0, bg, 0, null);
+        c.wgpuComputePassEncoderDispatchWorkgroups(pass, wg_x, wg_y, 1);
+
+        g.current_u = 1 - g.current_u;
+        g.step_count += 1;
+    }
+
     c.wgpuComputePassEncoderEnd(pass);
 
     const cmd_buf = c.wgpuCommandEncoderFinish(encoder, null);
@@ -494,11 +506,7 @@ pub export fn gs_gpu_step(da: f32, db: f32, dt: f32, feed: f32, kill: f32) void 
     c.wgpuQueueSubmit(g.queue, 1, &cmd_buf);
     c.wgpuCommandBufferRelease(cmd_buf);
 
-    // Wait for GPU to finish this step (ensures deterministic behavior)
     _ = c.wgpuDevicePoll(g.device, c.WGPU_TRUE, null);
-
-    g.current_u = 1 - g.current_u;
-    g.step_count += 1;
 }
 
 pub export fn gs_gpu_read_result(buf_ptr: [*]u8, buf_len: usize) u32 {

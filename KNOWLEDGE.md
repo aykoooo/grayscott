@@ -33,13 +33,13 @@ The agent reads it before each attempt to avoid retrying failed approaches.
 - **Plot**: If you want to visualize memory access patterns
 
 ## Success patterns:
-- Shared memory tiling: 16×16 workgroup loading 18×18 tile into `var<workgroup>`. Resulted in +69% improvement (90M→153M).
-- Workgroup size tuned to 8×8: smaller tiles mean more workgroup-level parallelism (1024 groups vs 256 for 256²). 8×8 gives 167.7M cells/sec (+86% over baseline, +10% over 16×16).
+- Shared memory tiling: 16×16 workgroup, +69% (90M→153M).
+- Tuned to 8×8 workgroup: +86% over baseline (168M), more workgroup parallelism.
+- Command buffer batching: recording all 500 dispatches into one command encoder eliminates ~332μs per-step submit/poll overhead. Single-step dispatch runs in ~28μs actual GPU time. Result: +1,300% over tiling alone, +2,500% over baseline (2.35B cells/sec). This is the technique that truly unlocked the GPU.
 
 ## Failure patterns:
-- 32×32 workgroup: silent failure (likely exceeds implementation limits)
-- f16 storage: skipped due to known Vulkan/NVIDIA driver issue with StorageInputOutput16 requirement in wgpu
-
-## Phase completion status:
+- 32×32 workgroup: silent failure (exceeds limits)
+- f16: skipped due to known Vulkan/NVIDIA driver issues with StorageInputOutput16
+- Temporal blocking: too complex for small 8×8 tiles, ROI unclear after batching win
 A: ✅ GPU WebGPU compute pipeline working natively via wgpu-native
 B: 🔥 Partially — B.1-B.3 done (shared memory tiling, 153M cells/sec), B.4 pending
