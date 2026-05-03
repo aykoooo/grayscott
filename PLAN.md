@@ -60,3 +60,36 @@ Optimize the WebGPU compute shader for the Gray-Scott reaction-diffusion engine.
 | + Command buffer batching (1 commit/500 steps) | 2,346,051,133 | +2,500% |
 
 Target achieved: 23× over original >100M goal at 256².
+
+---
+
+# Phase K–N: Next Round
+
+## 🔥 Phase K — Test f16 (Retry)
+- [ ] **K.1** Query `wgpuAdapterHasFeature(wgpuAdapter, WGPUFeatureName_ShaderF16)` in `gs_gpu_init()`
+  - Previous assumption was "it won't work on RTX 4060." Actually test it.
+- [ ] **K.2** If supported: request device with feature, generate WGSL with `enable f16;`, halve buffer sizes
+  - Use `array<f16>` for storage, `f32(f16_val)` for math, `f16(result)` for store
+- [ ] **K.3** Benchmark. Keep if median > current best + 10%.
+
+## 🔥 Phase L — vec2<f32> UV Packing (Simplify tile loads)
+- [ ] **L.1** Combine two separate global reads (u_in[idx], v_in[idx]) into one: read `vec2<f32>` from combined buffer
+  - Requires restructuring buffers: instead of u0/v0/u1/v1, use uv_even/uv_odd (interleaved UV)
+  - Halves global memory traffic during tile loading phase (each thread does 1 read instead of 2)
+- [ ] **L.2** Modify init/readback code for interleaved layout
+- [ ] **L.3** Benchmark. Keep if improvement.
+
+## 🔥 Phase M — Multi-resolution Benchmarks
+- [ ] **M.1** Add benchmark targets for 512²/500 and 1024²/100 to build.zig
+  - The 256² benchmark runs in ~14ms — too fast for meaningful GPU measurement (timer noise dominates)
+  - At 1024², bandwidth limits become visible and give trustworthy measurements
+- [ ] **M.2** Run benchmarks at all scales, record throughput curve in PERFORMANCE.md
+- [ ] **M.3** Identify whether we're compute-bound or bandwidth-bound at each scale
+
+## 🔥 Phase N — Map Integration & Adaptive Convergence
+- [ ] **N.1** Build a map-bench target that runs actual pattern generation (not just the 500-step tight loop)
+  - Tests end-to-end pipeline: init → seeded fill → steps → readback → render
+- [ ] **N.2** Implement convergence tracking: check `|Δu| < epsilon` per-tile, skip workgroups that converged
+  - Add a second compute pass that reads output diff, writes a "converged" flag bitmap
+  - Main compute pass checks flag before dispatching
+- [ ] **N.3** Benchmark map mode against CPU reference. Keep if faster.

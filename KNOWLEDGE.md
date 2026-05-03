@@ -41,5 +41,9 @@ The agent reads it before each attempt to avoid retrying failed approaches.
 - 32×32 workgroup: silent failure (exceeds limits)
 - f16: skipped due to known Vulkan/NVIDIA driver issues with StorageInputOutput16
 - Temporal blocking: too complex for small 8×8 tiles, ROI unclear after batching win
-A: ✅ GPU WebGPU compute pipeline working natively via wgpu-native
-B: 🔥 Partially — B.1-B.3 done (shared memory tiling, 153M cells/sec), B.4 pending
+
+## Phase completion status:
+A: ✅  B: ✅  C: ⊘ (skipped)  D: ✅  E: ⊘ (evaluated)  F: ✅
+G: ⊘  H: ⊘ (superseded by F)  I: ⊘  J: ✅
+
+Current best: 2.35B cells/sec (8×8 tiling + command buffer batching)
