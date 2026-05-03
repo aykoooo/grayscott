@@ -32,6 +32,7 @@ const GpuState = struct {
     current_u: u32 = 0, // 0 = u0 has latest, 1 = u1 has latest
     step_count: u32 = 0,
     initialized: bool = false,
+    has_f16: bool = false,
 };
 
 var g: GpuState = .{};
@@ -256,15 +257,35 @@ pub export fn gs_gpu_init(width: u32, height: u32) bool {
     g.adapter = g_cb_adapter;
     if (g.adapter == null) return false;
 
+    // ---- Query f16 support (Phase K retry) ----
+    g.has_f16 = c.wgpuAdapterHasFeature(g.adapter, c.WGPUFeatureName_ShaderF16) != c.WGPU_FALSE;
+    std.debug.print("f16 support: {s}\n", .{if (g.has_f16) "YES" else "NO"});
+
     // ---- Device (async + wait) ----
     g_cb_device = null;
+    var f16_features: [1]c.WGPUFeatureName = undefined;
+    var dev_desc: c.WGPUDeviceDescriptor = undefined;
+    const dev_desc_ptr: ?*const c.WGPUDeviceDescriptor = if (g.has_f16) desc_ptr: {
+        f16_features[0] = c.WGPUFeatureName_ShaderF16;
+        dev_desc = .{
+            .nextInChain = null,
+            .label = strv("device"),
+            .requiredFeatureCount = 1,
+            .requiredFeatures = &f16_features,
+            .requiredLimits = null,
+            .defaultQueue = std.mem.zeroes(c.WGPUQueueDescriptor),
+            .deviceLostCallbackInfo = std.mem.zeroes(c.WGPUDeviceLostCallbackInfo),
+            .uncapturedErrorCallbackInfo = std.mem.zeroes(c.WGPUUncapturedErrorCallbackInfo),
+        };
+        break :desc_ptr &dev_desc;
+    } else null;
     const device_cb_info: c.WGPURequestDeviceCallbackInfo = .{
         .mode = c.WGPUCallbackMode_WaitAnyOnly,
         .callback = deviceCallback,
         .userdata1 = null,
         .userdata2 = null,
     };
-    const device_fut = c.wgpuAdapterRequestDevice(g.adapter, null, device_cb_info);
+    const device_fut = c.wgpuAdapterRequestDevice(g.adapter, dev_desc_ptr, device_cb_info);
     if (!waitFuture(g.instance, device_fut)) return false;
     g.device = g_cb_device;
     if (g.device == null) return false;
