@@ -1,6 +1,9 @@
 const std = @import("std");
 const c = @import("webgpu.zig").c;
 
+const WGSL_BUF_SIZE: usize = 8192;
+const POLL_MAX_ATTEMPTS: u32 = 100_000;
+
 // =============================================================================
 // Global GPU state
 // =============================================================================
@@ -68,24 +71,21 @@ fn cstrv(s: [*:0]const u8) c.WGPUStringView {
 
 fn waitFuture(inst: c.WGPUInstance, _fut: c.WGPUFuture) bool {
     _ = _fut;
-    var attempts: u32 = 0;
-    while (attempts < 100000) : (attempts += 1) {
+    for (0..POLL_MAX_ATTEMPTS) |_| {
         c.wgpuInstanceProcessEvents(inst);
         if (g_cb_adapter != null or g_cb_device != null) return true;
-        // busy spin — events should fire inside ProcessEvents
     }
     return false;
 }
 
 fn makeBuffer(device: c.WGPUDevice, usage: u64, size: u64, label: []const u8) c.WGPUBuffer {
-    const desc: c.WGPUBufferDescriptor = .{
+    return c.wgpuDeviceCreateBuffer(device, &.{
         .nextInChain = null,
         .label = strv(label),
         .usage = usage,
         .size = size,
         .mappedAtCreation = c.WGPU_FALSE,
-    };
-    return c.wgpuDeviceCreateBuffer(device, &desc);
+    });
 }
 
 fn makeBindGroupEntry(binding: u32, buffer: c.WGPUBuffer, offset: u64, wsize: u64) c.WGPUBindGroupEntry {
@@ -97,6 +97,17 @@ fn makeBindGroupEntry(binding: u32, buffer: c.WGPUBuffer, offset: u64, wsize: u6
         .size = wsize,
         .sampler = null,
         .textureView = null,
+    };
+}
+
+fn makeBglEntry(binding: u32, ty: c.WGPUBufferBindingType) c.WGPUBindGroupLayoutEntry {
+    return .{
+        .binding = binding,
+        .visibility = c.WGPUShaderStage_Compute,
+        .buffer = .{ .type = ty, .hasDynamicOffset = c.WGPU_FALSE, .minBindingSize = 0 },
+        .sampler = .{ .type = c.WGPUSamplerBindingType_BindingNotUsed },
+        .texture = .{ .sampleType = c.WGPUTextureSampleType_BindingNotUsed, .viewDimension = c.WGPUTextureViewDimension_Undefined, .multisampled = c.WGPU_FALSE },
+        .storageTexture = .{ .access = c.WGPUStorageTextureAccess_BindingNotUsed, .format = c.WGPUTextureFormat_Undefined, .viewDimension = c.WGPUTextureViewDimension_Undefined },
     };
 }
 
@@ -262,7 +273,7 @@ pub export fn gs_gpu_init(width: u32, height: u32) bool {
     if (g.queue == null) return false;
 
     // ---- Shader ----
-    var wgsl_buf: [8192]u8 = undefined;
+    var wgsl_buf: [WGSL_BUF_SIZE]u8 = undefined;
     const wgsl_src = generateWgsl(&wgsl_buf, width, height, g.wg_x, g.wg_y) catch return false;
 
     var shader_source: c.WGPUShaderSourceWGSL = undefined;
@@ -329,56 +340,11 @@ pub export fn gs_gpu_init(width: u32, height: u32) bool {
 
     // ---- Bind group layout ----
     const entries = [_]c.WGPUBindGroupLayoutEntry{
-        .{
-            .nextInChain = null,
-            .binding = 0,
-            .visibility = c.WGPUShaderStage_Compute,
-            .bindingArraySize = 0,
-            .buffer = .{ .nextInChain = null, .type = c.WGPUBufferBindingType_ReadOnlyStorage, .hasDynamicOffset = c.WGPU_FALSE, .minBindingSize = 0 },
-            .sampler = .{ .nextInChain = null, .type = c.WGPUSamplerBindingType_BindingNotUsed },
-            .texture = .{ .nextInChain = null, .sampleType = c.WGPUTextureSampleType_BindingNotUsed, .viewDimension = c.WGPUTextureViewDimension_Undefined, .multisampled = c.WGPU_FALSE },
-            .storageTexture = .{ .nextInChain = null, .access = c.WGPUStorageTextureAccess_BindingNotUsed, .format = c.WGPUTextureFormat_Undefined, .viewDimension = c.WGPUTextureViewDimension_Undefined },
-        },
-        .{
-            .nextInChain = null,
-            .binding = 1,
-            .visibility = c.WGPUShaderStage_Compute,
-            .bindingArraySize = 0,
-            .buffer = .{ .nextInChain = null, .type = c.WGPUBufferBindingType_ReadOnlyStorage, .hasDynamicOffset = c.WGPU_FALSE, .minBindingSize = 0 },
-            .sampler = .{ .nextInChain = null, .type = c.WGPUSamplerBindingType_BindingNotUsed },
-            .texture = .{ .nextInChain = null, .sampleType = c.WGPUTextureSampleType_BindingNotUsed, .viewDimension = c.WGPUTextureViewDimension_Undefined, .multisampled = c.WGPU_FALSE },
-            .storageTexture = .{ .nextInChain = null, .access = c.WGPUStorageTextureAccess_BindingNotUsed, .format = c.WGPUTextureFormat_Undefined, .viewDimension = c.WGPUTextureViewDimension_Undefined },
-        },
-        .{
-            .nextInChain = null,
-            .binding = 2,
-            .visibility = c.WGPUShaderStage_Compute,
-            .bindingArraySize = 0,
-            .buffer = .{ .nextInChain = null, .type = c.WGPUBufferBindingType_Storage, .hasDynamicOffset = c.WGPU_FALSE, .minBindingSize = 0 },
-            .sampler = .{ .nextInChain = null, .type = c.WGPUSamplerBindingType_BindingNotUsed },
-            .texture = .{ .nextInChain = null, .sampleType = c.WGPUTextureSampleType_BindingNotUsed, .viewDimension = c.WGPUTextureViewDimension_Undefined, .multisampled = c.WGPU_FALSE },
-            .storageTexture = .{ .nextInChain = null, .access = c.WGPUStorageTextureAccess_BindingNotUsed, .format = c.WGPUTextureFormat_Undefined, .viewDimension = c.WGPUTextureViewDimension_Undefined },
-        },
-        .{
-            .nextInChain = null,
-            .binding = 3,
-            .visibility = c.WGPUShaderStage_Compute,
-            .bindingArraySize = 0,
-            .buffer = .{ .nextInChain = null, .type = c.WGPUBufferBindingType_Storage, .hasDynamicOffset = c.WGPU_FALSE, .minBindingSize = 0 },
-            .sampler = .{ .nextInChain = null, .type = c.WGPUSamplerBindingType_BindingNotUsed },
-            .texture = .{ .nextInChain = null, .sampleType = c.WGPUTextureSampleType_BindingNotUsed, .viewDimension = c.WGPUTextureViewDimension_Undefined, .multisampled = c.WGPU_FALSE },
-            .storageTexture = .{ .nextInChain = null, .access = c.WGPUStorageTextureAccess_BindingNotUsed, .format = c.WGPUTextureFormat_Undefined, .viewDimension = c.WGPUTextureViewDimension_Undefined },
-        },
-        .{
-            .nextInChain = null,
-            .binding = 4,
-            .visibility = c.WGPUShaderStage_Compute,
-            .bindingArraySize = 0,
-            .buffer = .{ .nextInChain = null, .type = c.WGPUBufferBindingType_Uniform, .hasDynamicOffset = c.WGPU_FALSE, .minBindingSize = 0 },
-            .sampler = .{ .nextInChain = null, .type = c.WGPUSamplerBindingType_BindingNotUsed },
-            .texture = .{ .nextInChain = null, .sampleType = c.WGPUTextureSampleType_BindingNotUsed, .viewDimension = c.WGPUTextureViewDimension_Undefined, .multisampled = c.WGPU_FALSE },
-            .storageTexture = .{ .nextInChain = null, .access = c.WGPUStorageTextureAccess_BindingNotUsed, .format = c.WGPUTextureFormat_Undefined, .viewDimension = c.WGPUTextureViewDimension_Undefined },
-        },
+        makeBglEntry(0, c.WGPUBufferBindingType_ReadOnlyStorage),
+        makeBglEntry(1, c.WGPUBufferBindingType_ReadOnlyStorage),
+        makeBglEntry(2, c.WGPUBufferBindingType_Storage),
+        makeBglEntry(3, c.WGPUBufferBindingType_Storage),
+        makeBglEntry(4, c.WGPUBufferBindingType_Uniform),
     };
     const bgl_desc: c.WGPUBindGroupLayoutDescriptor = .{
         .nextInChain = null,
@@ -550,8 +516,8 @@ pub export fn gs_gpu_read_result(buf_ptr: [*]u8, buf_len: usize) u32 {
     _ = c.wgpuBufferMapAsync(g.buf_u_readback, c.WGPUMapMode_Read, 0, grid_bytes, map_info);
 
     // Poll until map completes
-    var poll_attempts: u32 = 0;
-    while (poll_attempts < 100000 and !map_completed) : (poll_attempts += 1) {
+    for (0..POLL_MAX_ATTEMPTS) |_| {
+        if (map_completed) break;
         c.wgpuInstanceProcessEvents(g.instance);
         _ = c.wgpuDevicePoll(g.device, c.WGPU_FALSE, null);
     }
@@ -572,12 +538,20 @@ pub export fn gs_gpu_read_result(buf_ptr: [*]u8, buf_len: usize) u32 {
 
 pub export fn gs_gpu_free() void {
     if (!g.initialized) return;
-    if (g.buf_u_readback != null) { c.wgpuBufferDestroy(g.buf_u_readback); c.wgpuBufferRelease(g.buf_u_readback); }
-    if (g.buf_params != null) { c.wgpuBufferDestroy(g.buf_params); c.wgpuBufferRelease(g.buf_params); }
-    if (g.buf_u0 != null) { c.wgpuBufferDestroy(g.buf_u0); c.wgpuBufferRelease(g.buf_u0); }
-    if (g.buf_u1 != null) { c.wgpuBufferDestroy(g.buf_u1); c.wgpuBufferRelease(g.buf_u1); }
-    if (g.buf_v0 != null) { c.wgpuBufferDestroy(g.buf_v0); c.wgpuBufferRelease(g.buf_v0); }
-    if (g.buf_v1 != null) { c.wgpuBufferDestroy(g.buf_v1); c.wgpuBufferRelease(g.buf_v1); }
+
+    // Release all resources in reverse creation order
+    for ([_]c.WGPUBuffer{
+        g.buf_u_readback,
+        g.buf_params,
+        g.buf_u0,  g.buf_u1,
+        g.buf_v0,  g.buf_v1,
+    }) |buf| {
+        if (buf != null) {
+            c.wgpuBufferDestroy(buf);
+            c.wgpuBufferRelease(buf);
+        }
+    }
+
     if (g.bind_group_even != null) c.wgpuBindGroupRelease(g.bind_group_even);
     if (g.bind_group_odd != null) c.wgpuBindGroupRelease(g.bind_group_odd);
     if (g.pipeline != null) c.wgpuComputePipelineRelease(g.pipeline);
@@ -588,5 +562,6 @@ pub export fn gs_gpu_free() void {
     if (g.device != null) c.wgpuDeviceRelease(g.device);
     if (g.adapter != null) c.wgpuAdapterRelease(g.adapter);
     if (g.instance != null) c.wgpuInstanceRelease(g.instance);
+
     g = .{};
 }
