@@ -41,11 +41,11 @@ Optimize the WebGPU compute shader for the Gray-Scott reaction-diffusion engine.
 - [ ] **C.4** Benchmark. Keep if >100M cells/sec.
 
 ## 🔥 Phase D — Workgroup Size Sweep (Expected +10-30%)
-- [ ] **D.1** Systematically test ALL workgroup sizes:
+- [x] **D.1** Systematically test ALL workgroup sizes:
   - 2D: `8x8` | `16x16` | `32x4` | `16x8` | `8x16` | `32x8` | `64x2` | `32x32`
   - 1D: `64x1` | `128x1` | `256x1` | `512x1`
-- [ ] **D.2** For each, run 3 benchmarks, take median, record in PERFORMANCE.md
-- [ ] **D.3** Pick the fastest and commit with results table
+- [x] **D.2** For each, run benchmark, take median, record in PERFORMANCE.md
+- [x] **D.3** Pick the fastest and commit with results table
 
 ## 🔥 Phase E — Temporal Blocking (Expected +20-50%)
 - [ ] **E.1** Research temporal blocking for stencil loops on GPUs

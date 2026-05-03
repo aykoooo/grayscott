@@ -33,10 +33,12 @@ The agent reads it before each attempt to avoid retrying failed approaches.
 - **Plot**: If you want to visualize memory access patterns
 
 ## Success patterns:
-- Shared memory tiling: 16×16 workgroup loading 18×18 tile (1-cell halo) into `var<workgroup>` arrays for u and v. Each thread loads its center cell + edge threads load halo cells + corner threads load diagonal corner halos. Uses workgroupBarrier() between load and compute phases. Resulted in +69.4% improvement (90M→153M cells/sec) on Intel iGPU.
+- Shared memory tiling: 16×16 workgroup loading 18×18 tile into `var<workgroup>`. Resulted in +69% improvement (90M→153M).
+- Workgroup size tuned to 8×8: smaller tiles mean more workgroup-level parallelism (1024 groups vs 256 for 256²). 8×8 gives 167.7M cells/sec (+86% over baseline, +10% over 16×16).
 
 ## Failure patterns:
-- None yet
+- 32×32 workgroup: silent failure (likely exceeds implementation limits)
+- f16 storage: skipped due to known Vulkan/NVIDIA driver issue with StorageInputOutput16 requirement in wgpu
 
 ## Phase completion status:
 A: ✅ GPU WebGPU compute pipeline working natively via wgpu-native
