@@ -200,6 +200,39 @@ pub fn build(b: *std.Build) void {
     gpu_bench_1024.setEnvironmentVariable("PATH", new_path);
     b.step("bench-gpu-1024", "GPU benchmark at 1024^2, 100 steps").dependOn(&gpu_bench_1024.step);
 
+    // ====================================================================
+    // Map-Bench (end-to-end pipeline: init + seeded fill + steps + readback)
+    // ====================================================================
+    const map_bench_mod = b.createModule(.{
+        .root_source_file = b.path("BENCHMARK/bench_map.zig"),
+        .target = target,
+        .optimize = .ReleaseFast,
+    });
+    map_bench_mod.addIncludePath(b.path("vendor/wgpu-native/include"));
+    map_bench_mod.addLibraryPath(b.path("vendor/wgpu-native/lib"));
+    map_bench_mod.link_libc = true;
+    map_bench_mod.addImport("gray_scott_gpu", gpu_mod);
+
+    const map_bench_exe = b.addExecutable(.{
+        .name = "bench-map",
+        .root_module = map_bench_mod,
+    });
+    map_bench_exe.linkSystemLibrary("wgpu_native");
+
+    const map_bench_run = b.addRunArtifact(map_bench_exe);
+    map_bench_run.setEnvironmentVariable("PATH", new_path);
+    b.step("bench-map", "Map-bench: full GPU pipeline (init+seed+steps+readback) at 256^2, 5000 steps").dependOn(&map_bench_run.step);
+
+    var map_bench_512 = b.addRunArtifact(map_bench_exe);
+    map_bench_512.addArgs(&.{ "512", "512", "5000" });
+    map_bench_512.setEnvironmentVariable("PATH", new_path);
+    b.step("bench-map-512", "Map-bench at 512^2, 5000 steps").dependOn(&map_bench_512.step);
+
+    var map_bench_1024 = b.addRunArtifact(map_bench_exe);
+    map_bench_1024.addArgs(&.{ "1024", "1024", "1000" });
+    map_bench_1024.setEnvironmentVariable("PATH", new_path);
+    b.step("bench-map-1024", "Map-bench at 1024^2, 1000 steps").dependOn(&map_bench_1024.step);
+
     // Debug compare target
     const debug_mod = b.createModule(.{
         .root_source_file = b.path("BENCHMARK/debug_compare.zig"),

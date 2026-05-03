@@ -68,6 +68,12 @@ enable f16;
 - Key finding: WGSL `var<workgroup>` declares zero-initialized workgroup-shared memory visible to all threads in a workgroup. Must use `workgroupBarrier()` for synchronization. For a 9-point stencil on a 16×16 workgroup, load an 18×18 tile (16 + 1-cell halo each side). Edge threads load halo: left-edge loads neighbor's right column, etc. Critical performance insight for Intel iGPUs: shared memory goes to SLM not registers when dynamically indexed — benefit may be modest (~10-30%) vs dedicated GPUs.
 - Implementation approach: Declare arrays `tile_u: array<f32, 20*20>` and `tile_v: array<f32, 20*20>`, compute 1D local_idx = lid.y*(TILE_W+2) + lid.x, load main cell + edge threads load halo neighbors, barrier, then 9 reads from tile arrays instead of global buffers.
 
+## 2026-05-03 — Phase N.1: Map-Bench End-to-End Benchmark
+
+- Source: Gray-Scott with Rust tutorial (Vulkan), metal-by-example/metal-gray-scott, Codrops WebGPU reaction-diffusion article
+- Key finding: All GPU Gray-Scott implementations show that end-to-end throughput (init + steps + readback) matters more than step-only throughput for real users. The Rust vulkano tutorial explicitly separates "update microbenchmark" from "full simulation throughput." A map-bench target should time the complete pipeline.
+- Applicability: YES. Current bench_gpu.zig only times the stepping loop; realistic map generation needs init→seed→steps→readback→render timing. Use uniform params (GPU shader can't do non-uniform f/k yet). Multiple resolutions confirm compute-bound behavior persists.
+
 ## 2026-05-03 — Phase K: f16 Storage Full Experiment
 
 - **Feature detection**: ShaderF16 IS available on RTX 4060 Vulkan/wgpu-native v29 (v29 IO polyfill fixed old StorageInputOutput16 blocker). Committed as `has_f16` flag in GpuState + `wgpuAdapterHasFeature()` call.

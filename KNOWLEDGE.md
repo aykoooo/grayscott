@@ -72,3 +72,12 @@ bandwidth. GPU coalesces adjacent f32 reads efficiently already.
 SUCCESS: Added bench-gpu-512 and bench-gpu-1024 targets. Throughput constant at ~2.4-2.5B cells/sec
 at all three scales (256², 512², 1024²), confirming we are **compute-bound** not bandwidth-bound.
 This explains why memory optimizations (f16, vec2) couldn't help at this scale.
+
+### Iter 7: Phase N.1 — Map-Bench Target
+SUCCESS: Created BENCHMARK/bench_map.zig and `zig build bench-map` step. Measures full end-to-end
+GPU pipeline timing (init + seeded fill + steps + readback). Key findings:
+- Init dominates at small resolutions (~91% of total time at 256²), amortizes at larger grids
+- Step-only throughput matches existing bench-gpu (2.7–4.2B cells/sec)
+- Readback is negligible (<2ms at all tested scales)
+- Pipeline throughput improves from ~230M to ~1.21B cells/sec as resolution increases
+- Stable hashes recorded for 256²/5000, 512²/5000, 1024²/1000 configurations

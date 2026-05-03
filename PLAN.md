@@ -92,7 +92,7 @@ Target achieved: 23× over original >100M goal at 256².
   - Throughput ~2.4-2.5B cells/sec at all three scales → compute-bound (not bandwidth-limited)
 
 ## 🔥 Phase N — Map Integration & Adaptive Convergence
-- [ ] **N.1** Build a map-bench target that runs actual pattern generation (not just the 500-step tight loop)
+- [x] **N.1** Build a map-bench target that runs actual pattern generation (not just the 500-step tight loop)
   - Tests end-to-end pipeline: init → seeded fill → steps → readback → render
 - [ ] **N.2** Implement convergence tracking: check `|Δu| < epsilon` per-tile, skip workgroups that converged
   - Add a second compute pass that reads output diff, writes a "converged" flag bitmap

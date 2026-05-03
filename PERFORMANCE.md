@@ -51,3 +51,22 @@ Current best: **2,346,051,133 cells/sec** (8×8 tiling + command buffer batching
 | 1024² | 100 | ~2.38B | Stable, compute-bound |
 
 **Finding**: Throughput constant across scales → **compute-bound**, not bandwidth-limited.
+
+## Phase N.1: Map-Bench — End-to-End Pipeline Benchmark
+
+| Resolution | Steps | Step cells/sec | Pipeline cells/sec | Init ms | Step ms | Readback ms |
+|---|---|---|---|---|---|---|
+| 256² | 5000 | ~2.70B | ~230M | 1302 | 122 | 1.1 |
+| 512² | 5000 | ~4.09B | ~838M | 1243 | 320 | 0.7 |
+| 1024² | 1000 | ~4.20B | ~1.21B | 613 | 250 | 1.9 |
+
+**Hashes** (end-to-end pipeline, uniform f/k, periodic boundaries):
+- 256²/5000 steps: `df07ec44f702a7e63df3aa2ad24567d820dbfed3df20d435312cdaa66f455380`
+- 512²/5000 steps: `b845273374ce78941247a631e0304bf0fb480dcc8b712dc304e8cc07b105dab9`
+- 1024²/1000 steps: `40b0266b58271864e5c6d5eed6b8dd2747a0767cbdb7f8e90f431f32021c4abc`
+
+**Key findings**:
+- Init is dominant cost at small resolutions (91% of total at 256²), amortizes at larger grids (71% at 1024²)
+- Step-only throughput ~matches existing bench-gpu results (2.7–4.2B cells/sec)
+- Readback cost is negligible (<2ms at all scales)
+- **Build step**: `zig build bench-map` (default 256²/5000), `bench-map-512`, `bench-map-1024`
