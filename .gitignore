@@ -1,15 +1,9 @@
 .zig-cache/
 zig-out/
 .opencode/
-.ralph/
-logs/
 *.o
 *.pgm
 *.exe
 *.pdb
 *.wasm
-progress.csv
-cost.csv
-status.md
-RESEARCH_NOTES.md
-vendor/
+.loop.log
