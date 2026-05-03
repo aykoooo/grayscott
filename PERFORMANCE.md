@@ -2,11 +2,11 @@
 
 Persistent benchmark tracker. This file survives crashes and restarts.
 
-## Baseline
+## Baseline (restored wgpu-native v29)
 
 | Date | Technique | Cells/sec | Improvement | Status |
 |---|---|---|---|---|
-| 2025-05-03 | Naive GPU (9-point stencil, global mem) | 58,537,062 | — | ✅ Baseline |
+| 2026-05-03 | Naive GPU (9-point stencil, global mem) | 90,247,944 | — | ✅ Baseline |
 
 ## Reference
 - GPU hash (256²/500 steps): `e16ed0e3c29cc50b5fa2b42791f31ab00b39d488e971b5d3c6017970ed037a43`
