@@ -184,7 +184,12 @@ pub fn build(b: *std.Build) void {
     const gpu_bench_run = b.addRunArtifact(gpu_bench_exe);
     const lib_path = b.pathJoin(&.{ b.build_root.path.?, "vendor", "wgpu-native", "lib" });
     const path_sep = if (builtin.os.tag == .windows) ";" else ":";
-    const env_path = std.process.getEnvVarOwned(b.allocator, "PATH") catch "";
+    const env_path = if (@hasDecl(std.process, "getEnvVarOwned"))
+        std.process.getEnvVarOwned(b.allocator, "PATH") catch ""
+    else blk: {
+        const ptr = std.os.getenv("PATH") orelse @as([*:0]const u8, @ptrCast("."));
+        break :blk b.allocator.dupe(u8, std.mem.sliceTo(ptr, 0)) catch @panic("OOM");
+    };
     defer b.allocator.free(env_path);
     const new_path = b.fmt("{s}{s}{s}", .{ env_path, path_sep, lib_path });
     gpu_bench_run.setEnvironmentVariable("PATH", new_path);

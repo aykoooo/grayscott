@@ -140,18 +140,80 @@ The "compute-bound" diagnosis was wrong. Roofline math:
 - [ ] **R.2** Test candidate shapes: 16×4, 32×2, 8×8 (baseline). Sweep. Record occupancy and throughput.
 - [ ] **R.3** Select best shape. Update `GpuState.wg_x`/`wg_y`.
 
-## 🔥 Phase S — Subgroup Shuffle Intra-Warp Data Sharing (Expected +10-25%, contingent on naga)
-- [ ] **S.1** Check wgpu-native/naga status for `enable subgroups;` acceptance (gap tracked at gfx-rs/wgpu#8202). On Vulkan backend, VK_EXT_subgroup_size_control provides 32-thread subgroups.
-- [ ] **S.2** If available: replace shared memory column loads with `subgroupShuffleDown`/`subgroupShuffleUp` within warps. Eliminates SMEM bank conflicts entirely for intra-warp data sharing.
-- [ ] **S.3** Benchmark. If blocked by naga, mark `[BLOCKED: naga #8202 not resolved]`.
+## 🔥 Phase S — Subgroup Shuffle Intra-Warp Data Sharing (Expected +10-25%, dual approach)
+- [ ] **S.1** Native path (naga): Check wgpu-native/naga status for `enable subgroups;` acceptance (gap tracked at gfx-rs/wgpu#8202). Likely still blocked.
+- [ ] **S.2** Browser path (Chrome 134+): Chrome 134 shipped `"subgroups"` feature + WGSL `enable subgroups;`. Firefox/Safari not yet. Browser WebGPU supports `subgroupShuffle()`, `subgroupAdd()`, etc. naga limitation is irrelevant for browser target — Dawn compiles WGSL directly.
+- [ ] **S.3** If available (browser or native): Replace shared memory column loads with subgroup shuffle within warps. Eliminates SMEM bank conflicts entirely. Mark `[BLOCKED: naga]` for native, `[READY: Chrome 134+]` for browser.
+
+## 🔥 Phase T — Register-Level Output Tiling (Expected +10-20%)
+- [ ] **T.1** Each thread computes 2×1 or 2×2 output cells instead of 1. Keeps u/v intermediates in registers across adjacent computations. Amortizes neighbor loads: 2 cells share 6 of 9 neighbors.
+- [ ] **T.2** Implement 2-cell horizontal pair first (simplest). Expand to 2×2 if register pressure permits (< 128 registers/thread on RTX 4060).
+- [ ] **T.3** Benchmark all coarsening factors. Pick best.
+
+## 🔥 Phase U — WASM WGSL Shader String Export (Foundation for nabla-type-lite)
+- [ ] **U.1** Add `src/wasm_shader.zig`: Export functions that call `generateWgsl()` / `generateWgslPearson()` and return WGSL strings + metadata (workgroup size, buffer sizes) to JavaScript.
+- [ ] **U.2** Export `gs_wasm_get_wgsl(width, height, mode)` → returns optimized per-resolution shader string. Also exports bind group layout info, dispatch counts, buffer sizes.
+- [ ] **U.3** Build via existing `zig build wasm` target. Ships as a drop-in `.wasm` module that nabla-type-lite imports to get optimized WGSL shaders.
+- [ ] **U.4** Verify hash determinism: WGSL string must produce identical computation results at same resolution. Hash gate applies.
+
+## 🔥 Phase V — Full WASM+WebGPU Emscripten Pipeline (End Goal)
+- [ ] **V.1** Set up Emscripten 4.0+ toolchain. Emscripten provides its own `webgpu.h` mapping directly to browser `navigator.gpu` — no wgpu-native dependency needed in browser.
+- [ ] **V.2** Port GPU pipeline management (`gs_gpu_init`, `gs_gpu_steps`, `gs_gpu_read_result`) to use Emscripten's webgpu C API. Reference: seyhajin/webgpu-wasm-zig (Zig 0.15.2 + Emscripten 4.0.22 verified working).
+- [ ] **V.3** Build target: `wasm32-emscripten`, outputs `.wasm` + `.js` glue + `.html` shell.
+- [ ] **V.4** Benchmark browser vs native performance. Expect some overhead from JS↔WASM boundary crossings.
+
+## 🔥 Phase W — CPU SIMD + Multithreading for WASM Fallback
+- [ ] **W.1** Zig SIMD vectors for the CPU `stepDeterministic` inner loop. Process 4-8 cells simultaneously using `@Vector(8, f32)`.
+- [ ] **W.2** WASM threads + atomics for multi-threaded CPU simulation. Requires `SharedArrayBuffer` + COOP/COEP headers. Striped decomposition: each thread gets rows = height/N.
+- [ ] **W.3** Benchmark against single-threaded WASM. Target 2–4× speedup on 4-core devices.
 
 ## Combined Projection
 | Technique | Expected Gain | Cumulative |
 |---|---|---|
-| Current best | — | 2.35B |
+| Current best (8x8 tiling + batched dispatch) | — | 2.35B |
 | + Bank conflict fix (Phase O) | 1.15× | 2.7B |
 | + Temporal blocking (Phase P) | 1.5–1.8× | 4.0–4.9B |
 | + Thread coarsening (Phase Q) | 1.3× | 5.2–6.3B |
 | + Warp-locality reshape (Phase R) | 1.15× | 6.0–7.3B |
-| + Subgroup shuffle (Phase S) | 1.15× | 6.9–8.4B |
-| **Target range** | | **7–12B cells/sec** |
+| + Subgroup shuffle (Phase S, browser Chrome 134+) | 1.15× | 6.9–8.4B |
+| + Register tiling (Phase T) | 1.15× | 7.9–9.7B |
+| **Target range (CLI)** | | **7–12B cells/sec** |
+| **WASM WGSL export (Phase U)** | Ships to nabla-type-lite | ✅ functional |
+| **Full WASM+WebGPU (Phase V)** | Emscripten pipeline | ✅ browser native |
+| **WASM CPU SIMD (Phase W)** | 2–4× vs single-thread | fallback path |
+
+## Strategic Roadmap
+
+```
+Phase O ──→ Phase P ──→ Phase Q ──→ Phase R     (CLI perf: 2.35B → 7-10B)
+   │
+   └── Phase U (can run in parallel)             (WASM shader export for nabla-type-lite)
+          │
+          └── Phase V                               (Full browser WebGPU via Emscripten)
+                   │
+                   └── Phase S (browser path)        (Subgroups enable on Chrome 134+)
+                          │
+                          └── Phase W                (CPU SIMD fallback for non-WebGPU browsers)
+```
+
+## Key Research Findings (2026-05-04)
+
+### Browser WebGPU Support Status
+- **Chrome 134+**: `subgroups` feature shipped! WGSL `enable subgroups;` works. `subgroupShuffle()`, `subgroupAdd()`, etc. all available. Phase S is VIABLE via browser target.
+- **Chrome 144+**: Added `subgroup_id` and `num_subgroups` built-in values.
+- **Firefox/Safari**: No subgroups support yet. Non-Chrome users need CPU fallback.
+- **shader-f16**: Chrome 113+, Firefox 111+, Safari 16.4+. Widely supported.
+
+### WASM+WebGPU Architecture Decision
+Two viable paths identified:
+1. **Shader-export approach (Phase U)**: Zig generates WGSL strings → exports via WASM → JS handles WebGPU. Simplest, works today, minimal dependencies. Good for nabla-type-lite integration.
+2. **Full Emscripten pipeline (Phase V)**: Compile Zig with Emscripten's `webgpu.h` → `.wasm` manages GPU directly. Based on seyhajin/webgpu-wasm-zig (Zig 0.15.2 + Emscripten 4.0.22, confirmed working). More complex but enables full GPU management from WASM.
+
+Recommended strategy: **Do both**. Phase U first (fastest path to nabla-type-lite), Phase V as follow-up (for autonomous WASM operation).
+
+### What Advanced Stencil Literature Says Does NOT Apply
+- Diamond/wave-front tiling: Designed for high-order (>25pt) 3D stencils. Overkill for 9pt 2D.
+- Tensor core acceleration: Our FP32 scalar stencil doesn't map to matrix multiply.
+- Semi-stencil algorithm: Only benefits stencils with radius ≥ 3 (ours is r=1).
+- Device-wide sync (EBISU): Requires `syncWorkgroup()` or cooperative groups — not in wgpu-native.
+- AMR/out-of-core streaming: Our problem fits in VRAM at all realistic resolutions.
