@@ -45,22 +45,14 @@ pub fn stepDeterministic(
             const v_se = grid.v[(y + 1) * width + (x + 1)];
             const v_sw = grid.v[(y + 1) * width + (x - 1)];
 
-            const lap_u = 0.2 * (u_left + u_right + u_up + u_down)
-                        + 0.05 * (u_ne + u_nw + u_se + u_sw)
-                        - 1.0 * u;
-            const lap_v = 0.2 * (v_left + v_right + v_up + v_down)
-                        + 0.05 * (v_ne + v_nw + v_se + v_sw)
-                        - 1.0 * v;
+            const lap_u = 0.2 * (u_left + u_right + u_up + u_down) + 0.05 * (u_ne + u_nw + u_se + u_sw) - 1.0 * u;
+            const lap_v = 0.2 * (v_left + v_right + v_up + v_down) + 0.05 * (v_ne + v_nw + v_se + v_sw) - 1.0 * v;
 
             const uvv = u * v * v;
 
-            next.u[idx] = @max(0.0, @min(1.0,
-                u + dt * (da * lap_u - uvv + feed * (1.0 - u))
-            ));
+            next.u[idx] = @max(0.0, @min(1.0, u + dt * (da * lap_u - uvv + feed * (1.0 - u))));
 
-            next.v[idx] = @max(0.0, @min(1.0,
-                v + dt * (db * lap_v + uvv - (feed + kill) * v)
-            ));
+            next.v[idx] = @max(0.0, @min(1.0, v + dt * (db * lap_v + uvv - (feed + kill) * v)));
         }
     }
 
@@ -144,22 +136,14 @@ fn processCell(
     const v_se = grid.v[y_b * width + x_r];
     const v_sw = grid.v[y_b * width + x_l];
 
-    const lap_u = 0.2 * (u_left + u_right + u_up + u_down)
-                + 0.05 * (u_ne + u_nw + u_se + u_sw)
-                - 1.0 * u;
-    const lap_v = 0.2 * (v_left + v_right + v_up + v_down)
-                + 0.05 * (v_ne + v_nw + v_se + v_sw)
-                - 1.0 * v;
+    const lap_u = 0.2 * (u_left + u_right + u_up + u_down) + 0.05 * (u_ne + u_nw + u_se + u_sw) - 1.0 * u;
+    const lap_v = 0.2 * (v_left + v_right + v_up + v_down) + 0.05 * (v_ne + v_nw + v_se + v_sw) - 1.0 * v;
 
     const uvv = u * v * v;
 
-    next.u[idx] = @max(0.0, @min(1.0,
-        u + dt * (da * lap_u - uvv + feed * (1.0 - u))
-    ));
+    next.u[idx] = @max(0.0, @min(1.0, u + dt * (da * lap_u - uvv + feed * (1.0 - u))));
 
-    next.v[idx] = @max(0.0, @min(1.0,
-        v + dt * (db * lap_v + uvv - (feed + kill) * v)
-    ));
+    next.v[idx] = @max(0.0, @min(1.0, v + dt * (db * lap_v + uvv - (feed + kill) * v)));
 }
 
 pub fn stepNeumann(
@@ -202,22 +186,14 @@ pub fn stepNeumann(
             const v_se = grid.v[(y + 1) * width + (x + 1)];
             const v_sw = grid.v[(y + 1) * width + (x - 1)];
 
-            const lap_u = 0.2 * (u_left + u_right + u_up + u_down)
-                        + 0.05 * (u_ne + u_nw + u_se + u_sw)
-                        - 1.0 * u;
-            const lap_v = 0.2 * (v_left + v_right + v_up + v_down)
-                        + 0.05 * (v_ne + v_nw + v_se + v_sw)
-                        - 1.0 * v;
+            const lap_u = 0.2 * (u_left + u_right + u_up + u_down) + 0.05 * (u_ne + u_nw + u_se + u_sw) - 1.0 * u;
+            const lap_v = 0.2 * (v_left + v_right + v_up + v_down) + 0.05 * (v_ne + v_nw + v_se + v_sw) - 1.0 * v;
 
             const uvv = u * v * v;
 
-            next.u[idx] = @max(0.0, @min(1.0,
-                u + dt * (da * lap_u - uvv + feed * (1.0 - u))
-            ));
+            next.u[idx] = @max(0.0, @min(1.0, u + dt * (da * lap_u - uvv + feed * (1.0 - u))));
 
-            next.v[idx] = @max(0.0, @min(1.0,
-                v + dt * (db * lap_v + uvv - (feed + kill) * v)
-            ));
+            next.v[idx] = @max(0.0, @min(1.0, v + dt * (db * lap_v + uvv - (feed + kill) * v)));
         }
     }
 
@@ -299,20 +275,12 @@ fn processCellNeumann(
     const v_se = grid.v[y_b * w + x_r];
     const v_sw = grid.v[y_b * w + x_l];
 
-    const lap_u = 0.2 * (u_left + u_right + u_up + u_down)
-                + 0.05 * (u_ne + u_nw + u_se + u_sw)
-                - 1.0 * u;
-    const lap_v = 0.2 * (v_left + v_right + v_up + v_down)
-                + 0.05 * (v_ne + v_nw + v_se + v_sw)
-                - 1.0 * v;
+    const lap_u = 0.2 * (u_left + u_right + u_up + u_down) + 0.05 * (u_ne + u_nw + u_se + u_sw) - 1.0 * u;
+    const lap_v = 0.2 * (v_left + v_right + v_up + v_down) + 0.05 * (v_ne + v_nw + v_se + v_sw) - 1.0 * v;
 
     const uvv = u * v * v;
 
-    next.u[idx] = @max(0.0, @min(1.0,
-        u + dt * (da * lap_u - uvv + feed * (1.0 - u))
-    ));
+    next.u[idx] = @max(0.0, @min(1.0, u + dt * (da * lap_u - uvv + feed * (1.0 - u))));
 
-    next.v[idx] = @max(0.0, @min(1.0,
-        v + dt * (db * lap_v + uvv - (feed + kill) * v)
-    ));
+    next.v[idx] = @max(0.0, @min(1.0, v + dt * (db * lap_v + uvv - (feed + kill) * v)));
 }

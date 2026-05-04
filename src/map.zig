@@ -73,10 +73,9 @@ pub fn generateMap(
             const remain = iterations - iter;
             const eta = if (rate > 0) @as(i64, @intFromFloat(@as(f32, @floatFromInt(remain)) / rate)) else 0;
             std.debug.print("  Iter {d}/{d} | {d}s | {d:.0}/s | ETA {d}s = {d}m\n", .{
-                iter,           iterations,
-                @divTrunc(t,    1000),
-                rate,
-                eta,            @divTrunc(eta, 60),
+                iter,               iterations,
+                @divTrunc(t, 1000), rate,
+                eta,                @divTrunc(eta, 60),
             });
         }
     }

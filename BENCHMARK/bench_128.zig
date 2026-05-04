@@ -13,8 +13,11 @@ pub fn main() !void {
     const seed: u64 = 42;
     const num_seeds: usize = 5;
 
-    const da: f32 = 1.0; const db: f32 = 0.5; const dt: f32 = 1.0;
-    const feed: f32 = 0.0545; const kill: f32 = 0.0620;
+    const da: f32 = 1.0;
+    const db: f32 = 0.5;
+    const dt: f32 = 1.0;
+    const feed: f32 = 0.0545;
+    const kill: f32 = 0.0620;
 
     const feed_row = try allocator.alloc(f32, h);
     defer allocator.free(feed_row);

@@ -34,14 +34,22 @@ fn benchmarkStep(comptime name: []const u8, grid_size: usize, iterations: u32) v
     const ms_per_iter = @as(f64, @floatFromInt(elapsed_ms)) / @as(f64, @floatFromInt(iterations));
     const cells_per_sec = if (elapsed_ms > 0)
         (@as(f64, @floatFromInt(grid_size * grid_size)) * @as(f64, @floatFromInt(iterations))) /
-        (@as(f64, @floatFromInt(elapsed_ms)) / 1000.0)
+            (@as(f64, @floatFromInt(elapsed_ms)) / 1000.0)
     else
         0;
 
     std.debug.print("{s}: {d:.3} ms/step, {d:.2}M cells/sec\n", .{ name, ms_per_iter, cells_per_sec / 1e6 });
 }
 
-test "benchmark_scalar_64" { benchmarkStep("Scalar 64x64", 64, 1000); }
-test "benchmark_scalar_128" { benchmarkStep("Scalar 128x128", 128, 500); }
-test "benchmark_scalar_256" { benchmarkStep("Scalar 256x256", 256, 200); }
-test "benchmark_scalar_512" { benchmarkStep("Scalar 512x512", 512, 100); }
+test "benchmark_scalar_64" {
+    benchmarkStep("Scalar 64x64", 64, 1000);
+}
+test "benchmark_scalar_128" {
+    benchmarkStep("Scalar 128x128", 128, 500);
+}
+test "benchmark_scalar_256" {
+    benchmarkStep("Scalar 256x256", 256, 200);
+}
+test "benchmark_scalar_512" {
+    benchmarkStep("Scalar 512x512", 512, 100);
+}

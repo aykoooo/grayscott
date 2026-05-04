@@ -61,11 +61,9 @@ pub fn main() !void {
             0;
 
         std.debug.print("  Iter {d}/{d} | {d:.1}s | {d:.0} cells/s | ETA {d:.0}s = {d:.1}m\n", .{
-            step_count,  iterations,
-            total_s,
-            rate,
-            eta_s,
-            eta_s / 60.0,
+            step_count, iterations,
+            total_s,    rate,
+            eta_s,      eta_s / 60.0,
         });
     }
 

@@ -62,9 +62,9 @@ pub fn main() !void {
     const total_ns = timer.read();
 
     // Timing breakdown
-    const init_s   = @as(f64, @floatFromInt(init_ns)) / 1e9;
-    const step_s   = @as(f64, @floatFromInt(after_step_ns - init_ns)) / 1e9;
-    const total_s  = @as(f64, @floatFromInt(total_ns)) / 1e9;
+    const init_s = @as(f64, @floatFromInt(init_ns)) / 1e9;
+    const step_s = @as(f64, @floatFromInt(after_step_ns - init_ns)) / 1e9;
+    const total_s = @as(f64, @floatFromInt(total_ns)) / 1e9;
     const total_cells: f64 = @as(f64, @floatFromInt(w * h)) * @as(f64, @floatFromInt(steps));
 
     // Hash the U grid
@@ -86,7 +86,9 @@ pub fn main() !void {
         @as(u64, @intFromFloat(total_cells / step_s)),
         @as(u64, @intFromFloat(total_cells / total_s)),
         hash_str[0..],
-        w, h, steps,
+        w,
+        h,
+        steps,
         init_s * 1000.0,
         step_s * 1000.0,
         total_s * 1000.0,

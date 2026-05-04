@@ -48,14 +48,18 @@ var g_cb_adapter: c.WGPUAdapter = null;
 var g_cb_device: c.WGPUDevice = null;
 
 fn adapterCallback(status: c.WGPURequestAdapterStatus, adapter: c.WGPUAdapter, message: c.WGPUStringView, ud1: ?*anyopaque, ud2: ?*anyopaque) callconv(.c) void {
-    _ = message; _ = ud1; _ = ud2;
+    _ = message;
+    _ = ud1;
+    _ = ud2;
     if (status == c.WGPURequestAdapterStatus_Success) {
         g_cb_adapter = adapter;
     }
 }
 
 fn deviceCallback(status: c.WGPURequestDeviceStatus, device: c.WGPUDevice, message: c.WGPUStringView, ud1: ?*anyopaque, ud2: ?*anyopaque) callconv(.c) void {
-    _ = message; _ = ud1; _ = ud2;
+    _ = message;
+    _ = ud1;
+    _ = ud2;
     if (status == c.WGPURequestDeviceStatus_Success) {
         g_cb_device = device;
     }
@@ -227,9 +231,7 @@ fn generateWgsl(buf: []u8, w: u32, h: u32, tile_x: u32, tile_y: u32) ![]const u8
         \\    u_out[out_idx] = clamp(u_next, 0.0, 1.0);
         \\    v_out[out_idx] = clamp(v_next, 0.0, 1.0);
         \\}}
-    ,
-        .{ w, h, tile_x, tile_y, stride, tile_n, tile_n, tile_x, tile_y }
-    );
+    , .{ w, h, tile_x, tile_y, stride, tile_n, tile_n, tile_x, tile_y });
 }
 
 fn generateWgslPearson(buf: []u8, w: u32, h: u32, tile_x: u32, tile_y: u32) ![]const u8 {
@@ -342,9 +344,7 @@ fn generateWgslPearson(buf: []u8, w: u32, h: u32, tile_x: u32, tile_y: u32) ![]c
         \\    u_out[out_idx] = clamp(u_next, 0.0, 1.0);
         \\    v_out[out_idx] = clamp(v_next, 0.0, 1.0);
         \\}}
-    ,
-        .{ w, h, tile_x, tile_y, stride, tile_n, tile_n, tile_x, tile_y }
-    );
+    , .{ w, h, tile_x, tile_y, stride, tile_n, tile_n, tile_x, tile_y });
 }
 
 // =============================================================================
@@ -917,7 +917,8 @@ pub fn gs_gpu_read_result_v(buf_ptr: [*]u8, buf_len: usize) u32 {
     const MapCtx = struct { completed: *bool };
     const mapCallback = struct {
         fn cb(status: c.WGPUMapAsyncStatus, message: c.WGPUStringView, ud1: ?*anyopaque, ud2: ?*anyopaque) callconv(.c) void {
-            _ = message; _ = ud2;
+            _ = message;
+            _ = ud2;
             const ctx = @as(*MapCtx, @ptrCast(@alignCast(ud1)));
             ctx.completed.* = (status == c.WGPUMapAsyncStatus_Success);
         }
@@ -977,7 +978,8 @@ pub export fn gs_gpu_read_result(buf_ptr: [*]u8, buf_len: usize) u32 {
     const MapCtx = struct { completed: *bool };
     const mapCallback = struct {
         fn cb(status: c.WGPUMapAsyncStatus, message: c.WGPUStringView, ud1: ?*anyopaque, ud2: ?*anyopaque) callconv(.c) void {
-            _ = message; _ = ud2;
+            _ = message;
+            _ = ud2;
             const ctx = @as(*MapCtx, @ptrCast(@alignCast(ud1)));
             ctx.completed.* = (status == c.WGPUMapAsyncStatus_Success);
         }
@@ -1022,8 +1024,10 @@ pub export fn gs_gpu_free() void {
         g.buf_params,
         g.buf_kill_map,
         g.buf_feed_map,
-        g.buf_u0,  g.buf_u1,
-        g.buf_v0,  g.buf_v1,
+        g.buf_u0,
+        g.buf_u1,
+        g.buf_v0,
+        g.buf_v1,
     }) |buf| {
         if (buf != null) {
             c.wgpuBufferDestroy(buf);

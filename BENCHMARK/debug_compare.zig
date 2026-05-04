@@ -85,12 +85,18 @@ pub fn main() !void {
     // Min/max
     var cpu_min = grid.u[0];
     var cpu_max = grid.u[0];
-    for (grid.u) |v| { cpu_min = @min(cpu_min, v); cpu_max = @max(cpu_max, v); }
+    for (grid.u) |v| {
+        cpu_min = @min(cpu_min, v);
+        cpu_max = @max(cpu_max, v);
+    }
     var gpu_min = gpu_f32[0];
     var gpu_max = gpu_f32[0];
-    for (gpu_f32) |v| { gpu_min = @min(gpu_min, v); gpu_max = @max(gpu_max, v); }
-    std.debug.print("CPU U min={e}, max={e}\n", .{cpu_min, cpu_max});
-    std.debug.print("GPU U min={e}, max={e}\n", .{gpu_min, gpu_max});
+    for (gpu_f32) |v| {
+        gpu_min = @min(gpu_min, v);
+        gpu_max = @max(gpu_max, v);
+    }
+    std.debug.print("CPU U min={e}, max={e}\n", .{ cpu_min, cpu_max });
+    std.debug.print("GPU U min={e}, max={e}\n", .{ gpu_min, gpu_max });
 
     // Hash comparison
     var cpu_hasher = std.crypto.hash.sha2.Sha256.init(.{});
@@ -124,6 +130,6 @@ pub fn main() !void {
     }
     std.debug.print("Total differing cells: {d}\n", .{diff_count});
     if (diff_count > 0) {
-        std.debug.print("First diff at idx {d}: CPU={e}, GPU={e}\n", .{first_diff_idx, first_diff_val_cpu, first_diff_val_gpu});
+        std.debug.print("First diff at idx {d}: CPU={e}, GPU={e}\n", .{ first_diff_idx, first_diff_val_cpu, first_diff_val_gpu });
     }
 }
