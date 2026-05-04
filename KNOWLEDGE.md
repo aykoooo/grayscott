@@ -107,3 +107,9 @@ SUCCESS: Comprehensive pipeline comparison across scales. Step-only: GPU beats C
 
 ### Iter 10: Phase O — Shared Memory Bank Conflict Fix
 BLOCKED: Two variants tested (stride-11 for gcd(stride,32)=1 zero-conflict theory; stride-16 for power-of-2 address calc optimization). Both measured within noise (±5%) of baseline (~600M). Root cause: 8×8 workgroup = 64 threads = 2 warps × 32, only 6 out of 32 threads per warp experience 2-way conflicts on column loads. At this scale, bank conflict penalty is <5% and invisible in measurement noise. Fixing this isn't currently worth the code complexity or shared memory cost (padding wastes 10-60 bytes per row). Would only matter at larger workgroup sizes (16×16+). Marked blocked — revisit if/when temporal blocking or thread coarsening changes workgroup shape.
+
+### Iter 11: Phase P — Temporal Blocking
+BLOCKED: Evaluated with proper math (12×12 → 10×10 → 8×8 for 2-step fusion). Requires combined thread coarsening + expanded double-halo tile loading + multi-barrier intermediate storage. At 64 threads, step-1 covers 144 cells needing 2.25 cells/thread — necessitates complete shader restructure. Deferred until coarsening groundwork is done.
+
+### Iter 12: Phase R — Workgroup Reshape (16×4)
+SUCCESS: Changed wg_x from 8 to 16, wg_y from 8 to 4. Same 64 threads, same total dispatch count (1024 groups for 256²), but horizontal neighbors share a warp (16-wide rows fully contained in each warp). Result: +12.6% (681M vs 605M baseline). Hash unchanged (e16ed0e3...). The STRIDE changed from 10 to 18 (TX+2), tile_n from 100 to 108 (18×6) — slightly more shared memory but better warp coalescing dominates. Selected as new default. This also partially fixes bank conflicts since stride-18's larger dimension makes column-strided access patterns less uniform.

@@ -121,14 +121,9 @@ The "compute-bound" diagnosis was wrong. Roofline math:
 - [BLOCKED: same] **O.3** Benchmark vs baseline. Keep if median > 2.6B. Verify hash matches `e16ed0e3...`.
 
 ## 🔥 Phase P — Temporal Blocking / Multi-Step Fusion (Expected +50-100%)
-- [ ] **P.1** Research 2-step temporal blocking for 9-point 2D stencil. With 1-cell halo (10×10→8×8), extend to 3-cell halo (14×14→8×8 interior for step t, 6×6 interior for step t+1). LBNL bricks paper: 1.6×. cutile-stencil: 1.5–1.8×.
-- [ ] **P.2** Implement in `generateWgsl()`:
-  - Expand tile load to 14×14 (4× halo expansion)
-  - Compute step t across full 14×14→12×12 active region
-  - Barrier, then compute step t+1 across 12×12→10×10 active region
-  - Write 8×8 output (center of 10×10 after barrier)
-  - Register pressure: ~2× intermediate state per thread — monitor for spills
-- [ ] **P.3** Benchmark vs baseline. Keep if median > 3.5B. Hash verification per normal gating.
+- [BLOCKED: requires combined thread coarsening + expanded halo + multi-phase barrier structure. At 64 threads, 12×12→10×10→8×8 requires 2.25 cells/thread in step 1 — necessitates complete shader restructure. Defer until Phase Q coarsening groundwork done.] **P.1** Research 2-step temporal blocking for 9-point 2D stencil. With 1-cell halo (10×10→8×8), extend to 3-cell halo (14×14→8×8 interior for step t, 6×6 interior for step t+1). LBNL bricks paper: 1.6×. cutile-stencil: 1.5–1.8×.
+- [BLOCKED: same] **P.2** Implement in `generateWgsl()`
+- [BLOCKED: same] **P.3** Benchmark vs baseline
 
 ## 🔥 Phase Q — Thread Coarsening (Expected +20-50%)
 - [ ] **Q.1** Each thread computes 2 (horizontal pair) or 4 (2×2 block) cells instead of 1. Hou et al. (2017): 1.4–1.8× on stencils. Amortizes index calculations, exposes ILP to compiler FMA scheduling.
@@ -136,9 +131,9 @@ The "compute-bound" diagnosis was wrong. Roofline math:
 - [ ] **Q.3** Sweep coarsening factors: 2-cell horizontal, 4-cell 2×2. Benchmark each. Pick best.
 
 ## 🔥 Phase R — Warp-Locality Workgroup Reshape (Expected +10-20%)
-- [ ] **R.1** Current 8×8 = 64 threads = 2 warps. Reshape to 16×4 or 32×2 so vertical/horizontal neighbors share a warp — enables future subgroup shuffle sharing without barriers. Even without subgroups, improves L1 coalescing.
-- [ ] **R.2** Test candidate shapes: 16×4, 32×2, 8×8 (baseline). Sweep. Record occupancy and throughput.
-- [ ] **R.3** Select best shape. Update `GpuState.wg_x`/`wg_y`.
+- [x] **R.1** Current 8×8 = 64 threads = 2 warps. Reshape to 16×4 or 32×2 so vertical/horizontal neighbors share a warp — enables future subgroup shuffle sharing without barriers. Even without subgroups, improves L1 coalescing.
+- [x] **R.2** Test candidate shapes: 16×4 (+12.6%), 32×2 (+6.1%), 8×8 (baseline). Sweep complete.
+- [x] **R.3** Select best shape: 16×4. Updated `GpuState.wg_x`/`wg_y`.
 
 ## 🔥 Phase S — Subgroup Shuffle Intra-Warp Data Sharing (Expected +10-25%, dual approach)
 - [ ] **S.1** Native path (naga): Check wgpu-native/naga status for `enable subgroups;` acceptance (gap tracked at gfx-rs/wgpu#8202). Likely still blocked.

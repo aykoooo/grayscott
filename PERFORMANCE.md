@@ -15,6 +15,7 @@ Persistent benchmark tracker. This file survives crashes and restarts.
 - Target: >100M cells/sec (2× naive on this Intel iGPU)
 
 Current best: **2,346,051,133 cells/sec** (8×8 tiling + command buffer batching, +2,500% over baseline)
+Recent best: **~681M cells/sec** (16×4 workgroup reshape, consistent on 2026-05-04 session)
 
 ## Results Log
 
@@ -31,6 +32,12 @@ Current best: **2,346,051,133 cells/sec** (8×8 tiling + command buffer batching
 |---|---|---|---|---|
 | 2026-05-04 | Stride-11 padding (gcd=1, zero-bank-conflict theory) | ~580M | ~0% | ❌ Reverted — no measurable improvement |
 | 2026-05-04 | Stride-16 padding (power-of-2 address calc) | ~547M | ~0% | ❌ Reverted — no measurable improvement |
+
+## Phase R: Workgroup Reshape Sweep
+| Date | Technique | Cells/sec | Improvement | Status |
+|---|---|---|---|---|
+| 2026-05-04 | Workgroup reshape 8×8 → 16×4 | ~681M | +12.6% | ✅ Kept — best |
+| 2026-05-04 | Workgroup reshape 32×2 | ~642M | +6.1% | Slower than 16×4 |
 
 ### Workgroup Size Sweep
 | Size | Cells/sec | Result |
