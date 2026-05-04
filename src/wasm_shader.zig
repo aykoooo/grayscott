@@ -26,6 +26,15 @@ const CANDIDATE_TILES = [_][2]u32{
     .{ 4, 16 },
 };
 
+pub const VariantTag = enum(u32) {
+    standard = 0,
+    subgroups = 1,
+    pearson = 4,
+};
+
+const FEATURE_SUBGROUPS: u32 = 1;
+const FEATURE_F16: u32 = 2;
+
 var g_buf: [16384]u8 = undefined;
 
 fn buildWgsl(width: u32, height: u32, tile_x: u32, tile_y: u32) BufResult {
@@ -164,6 +173,60 @@ export fn gs_wasm_init(width: u32, height: u32) InitInfo {
         .buffer_size = width * height * 4,
         .grid_width = width,
         .grid_height = height,
+    };
+}
+
+pub const BestResult = extern struct {
+    shader_ptr: [*]const u8,
+    shader_len: u32,
+    tile_x: u32,
+    tile_y: u32,
+    dispatch_x: u32,
+    dispatch_y: u32,
+    variant_tag: u32,
+};
+
+fn selectWorkgroup(width: u32, height: u32) [2]u32 {
+    if (width >= height * 2) {
+        return .{ 32, 2 };
+    }
+    if (height >= width * 2) {
+        return .{ 4, 16 };
+    }
+    return .{ 16, 4 };
+}
+
+export fn gs_wasm_get_best(width: u32, height: u32, features: u32) BestResult {
+    const wg = selectWorkgroup(width, height);
+    const tile_x = wg[0];
+    const tile_y = wg[1];
+
+    if ((features & FEATURE_SUBGROUPS) != 0) {
+        const result = buildWgslSubgroups(width, height, tile_x, tile_y);
+        const dx = (width + tile_x - 1) / tile_x;
+        const dy = (height + tile_y - 1) / tile_y;
+        return .{
+            .shader_ptr = result.ptr,
+            .shader_len = result.len,
+            .tile_x = tile_x,
+            .tile_y = tile_y,
+            .dispatch_x = dx,
+            .dispatch_y = dy,
+            .variant_tag = @intFromEnum(VariantTag.subgroups),
+        };
+    }
+
+    const result = buildWgsl(width, height, tile_x, tile_y);
+    const dx = (width + tile_x - 1) / tile_x;
+    const dy = (height + tile_y - 1) / tile_y;
+    return .{
+        .shader_ptr = result.ptr,
+        .shader_len = result.len,
+        .tile_x = tile_x,
+        .tile_y = tile_y,
+        .dispatch_x = dx,
+        .dispatch_y = dy,
+        .variant_tag = @intFromEnum(VariantTag.standard),
     };
 }
 
