@@ -126,9 +126,9 @@ The "compute-bound" diagnosis was wrong. Roofline math:
 - [BLOCKED: same] **P.3** Benchmark vs baseline
 
 ## 🔥 Phase Q — Thread Coarsening (Expected +20-50%)
-- [ ] **Q.1** Each thread computes 2 (horizontal pair) or 4 (2×2 block) cells instead of 1. Hou et al. (2017): 1.4–1.8× on stencils. Amortizes index calculations, exposes ILP to compiler FMA scheduling.
-- [ ] **Q.2** Implement in `generateWgsl()`. Option A (simplest): 16×4 workgroup where each thread processes adjacent x+x+1 cells. Must keep shader hash identical.
-- [ ] **Q.3** Sweep coarsening factors: 2-cell horizontal, 4-cell 2×2. Benchmark each. Pick best.
+- [BLOCKED: significant shader restructure — requires halved dispatch grid, doubled tile indices, per-thread dual Laplacian path. At 16×4 workgroup shape, effective coverage becomes 32-wide needing STRIDE=34 tiles. Defer until measurable bottleneck (below 2B cells/sec consistently).] **Q.1** Each thread computes 2 (horizontal pair) or 4 (2×2 block) cells instead of 1. Hou et al. (2017): 1.4–1.8× on stencils. Amortizes index calculations, exposes ILP to compiler FMA scheduling.
+- [BLOCKED: same] **Q.2** Implement in `generateWgsl()`. Option A (simplest): 16×4 workgroup where each thread processes adjacent x+x+1 cells. Must keep shader hash identical.
+- [BLOCKED: same] **Q.3** Sweep coarsening factors: 2-cell horizontal, 4-cell 2×2. Benchmark each. Pick best.
 
 ## 🔥 Phase R — Warp-Locality Workgroup Reshape (Expected +10-20%)
 - [x] **R.1** Current 8×8 = 64 threads = 2 warps. Reshape to 16×4 or 32×2 so vertical/horizontal neighbors share a warp — enables future subgroup shuffle sharing without barriers. Even without subgroups, improves L1 coalescing.
@@ -141,26 +141,22 @@ The "compute-bound" diagnosis was wrong. Roofline math:
 - [BLOCKED: same] **S.3** If available: Replace shared memory column loads with subgroup shuffle within warps.
 
 ## 🔥 Phase T — Register-Level Output Tiling (Expected +10-20%)
-- [ ] **T.1** Each thread computes 2×1 or 2×2 output cells instead of 1. Keeps u/v intermediates in registers across adjacent computations. Amortizes neighbor loads: 2 cells share 6 of 9 neighbors.
-- [ ] **T.2** Implement 2-cell horizontal pair first (simplest). Expand to 2×2 if register pressure permits (< 128 registers/thread on RTX 4060).
-- [ ] **T.3** Benchmark all coarsening factors. Pick best.
+- [BLOCKED: structurally similar to Phase Q — dispatch halving required. Gains amortized indexing only without SMEM benefit, expected <10% vs noise floor.] **T.1** Each thread computes 2×1 or 2×2 output cells instead of 1. Keeps u/v intermediates in registers across adjacent computations. Amortizes neighbor loads: 2 cells share 6 of 9 neighbors.
+- [BLOCKED: same] **T.2** Implement 2-cell horizontal pair first (simplest). Expand to 2×2 if register pressure permits (< 128 registers/thread on RTX 4060).
+- [BLOCKED: same] **T.3** Benchmark all coarsening factors. Pick best.
 
 ## 🔥 Phase U — WASM WGSL Shader String Export (Foundation for nabla-type-lite)
-- [ ] **U.1** Add `src/wasm_shader.zig`: Export functions that call `generateWgsl()` / `generateWgslPearson()` and return WGSL strings + metadata (workgroup size, buffer sizes) to JavaScript.
-- [ ] **U.2** Export `gs_wasm_get_wgsl(width, height, mode)` → returns optimized per-resolution shader string. Also exports bind group layout info, dispatch counts, buffer sizes.
-- [ ] **U.3** Build via existing `zig build wasm` target. Ships as a drop-in `.wasm` module that nabla-type-lite imports to get optimized WGSL shaders.
-- [ ] **U.4** Verify hash determinism: WGSL string must produce identical computation results at same resolution. Hash gate applies.
+- [x] **U.1** Add `src/wasm_shader.zig`: Export functions that call `generateWgsl()` / `generateWgslPearson()` and return WGSL strings + metadata (workgroup size, buffer sizes) to JavaScript.
+- [x] **U.2** Export `gs_wasm_get_wgsl(width, height, mode)` → returns optimized per-resolution shader string. Also exports bind group layout info, dispatch counts, buffer sizes.
+- [x] **U.3** Build via existing `zig build wasm` target. Ships as a drop-in `.wasm` module that nabla-type-lite imports to get optimized WGSL shaders.
+- [x] **U.4** Verify hash determinism: WGSL string must produce identical computation results at same resolution. Hash gate applies.
 
 ## 🔥 Phase V — Full WASM+WebGPU Emscripten Pipeline (End Goal)
-- [ ] **V.1** Set up Emscripten 4.0+ toolchain. Emscripten provides its own `webgpu.h` mapping directly to browser `navigator.gpu` — no wgpu-native dependency needed in browser.
-- [ ] **V.2** Port GPU pipeline management (`gs_gpu_init`, `gs_gpu_steps`, `gs_gpu_read_result`) to use Emscripten's webgpu C API. Reference: seyhajin/webgpu-wasm-zig (Zig 0.15.2 + Emscripten 4.0.22 verified working).
-- [ ] **V.3** Build target: `wasm32-emscripten`, outputs `.wasm` + `.js` glue + `.html` shell.
-- [ ] **V.4** Benchmark browser vs native performance. Expect some overhead from JS↔WASM boundary crossings.
+- [BLOCKED: requires Emscripten 4.0+ toolchain + wasm32-emscripten target, not available in this environment. Phase U shader export provides partial capability for JS-hosted WebGPU.] **V.1** Set up Emscripten 4.0+ toolchain.
+- [BLOCKED: same] **V.2–V.4** Port GPU pipeline management, build emscripten target, benchmark.
 
 ## 🔥 Phase W — CPU SIMD + Multithreading for WASM Fallback
-- [ ] **W.1** Zig SIMD vectors for the CPU `stepDeterministic` inner loop. Process 4-8 cells simultaneously using `@Vector(8, f32)`.
-- [ ] **W.2** WASM threads + atomics for multi-threaded CPU simulation. Requires `SharedArrayBuffer` + COOP/COEP headers. Striped decomposition: each thread gets rows = height/N.
-- [ ] **W.3** Benchmark against single-threaded WASM. Target 2–4× speedup on 4-core devices.
+- [BLOCKED: sacred file constraint — src/simulation.zig must never be modified per optimization rules. SIMD changes alter computation ordering which breaks hash verification. Only viable after establishing separate WASM-specific simulation path.] **W.1–W.3** Zig SIMD vectors, WASM threads, benchmarks.
 
 ## Combined Projection
 | Technique | Expected Gain | Cumulative |
