@@ -16,6 +16,32 @@ Integration: pre-compiled gray_scott_shader.wasm loaded by nabla-type-lite.
 
 ---
 
+## Phase 0: Fix Naga Subgroups Blocker (PREREQUISITE)
+
+### Goal
+wgpu-native v29 Naga rejects `enable subgroups;`. Upgrade or replace so native benchmarks
+can validate subgroup-dependent shader variants (Phases 2-4).
+
+### Tasks
+- [ ] **0.1** Download latest wgpu-native release (v30+), replace:
+  - `vendor/wgpu-native/lib/wgpu_native.dll`
+  - `vendor/wgpu-native/include/webgpu/` headers
+  - Verify: `WGPUFeatureName_Subgroups` exists.
+- [ ] **0.2** Build bench-gpu-subgroups target and run `zig build bench-gpu-subgroups`.
+  Must NOT produce "not yet implemented in Naga" error.
+- [ ] **0.3** If v30+ still blocked: research Dawn direct integration (node.js/addon or deno).
+  Document alternative in RESEARCH_NOTES.md.
+
+### Gate
+```
+zig build bench-gpu-subgroups   # → produces cells_per_second + hash, not Naga error
+```
+
+### On failure (all attempts)
+Block Phases 2-4 with status `[BLOCKED: Naga subgroups]`. Proceed to Phases 3.1 (coarse no subgroups) and 5 (dynamic selection).
+
+---
+
 ## Phase 1: Dynamic Workgroup Sizing + nabla Integration Baseline
 
 ### Goal
@@ -214,3 +240,257 @@ pass.dispatchWorkgroups(info.groups_x, info.groups_y, 1);
 **Target: ~6.8B cells/sec (browser), reaching 51% of theoretical bandwidth ceiling.**
 
 This means a 1024² simulation at 60fps could run ~110 steps per frame — real-time interactive speed.
+
+---
+
+## 🪜 Phase 2→5 Execution Plan (with /loop Orchestration)
+
+### ⚠️ Critical Prerequisite: Fix The Naga Blocker
+
+All subgroup-based phases (2-4) are currently untestable because wgpu-native v29's
+Naga WGSL frontend rejects `enable subgroups;`. Three options:
+
+| Option | Effort | Risk | Recommendation |
+|---|---|---|---|
+| **A: Upgrade wgpu-native to v30+** | 1 hour | Low | Try first. v30 may include Naga subgroup support |
+| **B: Use Dawn directly** | 4 hours | Medium | Dawn = Chrome's implementation. 100% compatible. |
+| **C: Browser-only testing** | Ongoing | High | Manual Chrome DevTools testing per variant. Slow feedback. |
+
+**Recommended: Option A first, fall back to B if blocked.**
+
+For Option A:
+```bash
+# Download latest wgpu-native release
+# Replace vendor/wgpu-native/lib/wgpu_native.dll and headers
+# Test: zig build bench-gpu-subgroups
+```
+
+Run as a standalone `/loop` pre-phase "Phase 0: Fix Naga" before starting Phases 2-5.
+
+---
+
+### 📦 How /loop Works With This Project
+
+```
+$ ./run-ocloop.sh                    # Start the loop (auto-model fallback)
+$ ./run-ocloop.sh -m litellm/kimi-k2.6  # Force specific model
+$ ./run-ocloop.sh --verbose          # Verbose logging
+```
+
+Pre-conditions checked by `run-ocloop.sh`:
+1. `zig build test` passes
+2. `vendor/wgpu-native/lib/wgpu_native.dll` exists
+3. Git repo is clean-ish
+
+The loop reads `.loop-prompt.md` for task instructions, then reads
+NABLA_PLAN.md → PERFORMANCE.md → KNOWLEDGE.md to self-orient.
+
+Each loop iteration runs the Mandatory Workflow (assess → implement → test →
+benchmark → verify hash → compare baseline → commit/advance).
+
+---
+
+### 🎯 Task Queue for /loop Execution
+
+Tasks below are ordered and sized for single /loop sessions (~5-20 min each).
+Each has `--max-iterations 3` so a stuck task auto-escalates after 3 attempts.
+
+---
+
+#### ⬜ Phase 0: Fix Naga Subgroup Support
+
+**Prompt:** `Fix the Naga subgroup blocker. Attempt wgpu-native v30+ upgrade first.
+If WGPUFeatureName_Subgroups exists in headers AND shader creation succeeds with
+enable subgroups;, mark Phase 0 done. If Naga still blocks after v30+, research
+Dawn direct integration as alternative.`
+
+**Invocation:**
+```
+/loop "Fix Naga subgroup blocker" --max-iterations 3
+```
+
+**Expected output:** `generateWgslSubgroups()` shader compiles on native GPU.
+
+**Gate:** `zig build bench-gpu-subgroups` works without Naga parse error.
+
+**On success:** Unblock Phases 2-5. Mark `[x] Phase 0`.
+
+**On failure (3 attempts):** Mark `[BLOCKED: Naga doesn't support subgroups in any wgpu-native version]`.
+All subgroup phases remain blocked. Skip to Phase 3.1 (coarse no subgroups) and
+Phase 5 (dynamic selection) which don't require subgroup execution.
+
+---
+
+#### ⬜ Phase 2.2–2.5: Complete Subgroup Integration
+
+**Prompt:** `Complete Phase 2 subgroup integration. Tasks: 2.2 add gs_wasm_has_subgroups()
+export, 2.3 wire both subgroup+standard exports in wasm_shader.zig, 2.4 verify hash
+e16ed0e3c29cc50b5fa2b42791f31ab00b39d488e971b5d3c6017970ed037a43 via bench-gpu-subgroups,
+2.5 benchmark 256²/500 and 512²/500 vs standard baseline. Use gpu.zig mode-aware init.
+Commit each sub-task.'
+
+**Invocation:**
+```
+/loop "Complete Phase 2 subgroup integration" --max-iterations 3
+```
+
+**Depends on:** Phase 0 (Naga fixed).
+
+**Files:** `src/wasm_shader.zig`, `src/gpu/gpu.zig`, `build.zig`, `BENCHMARK/bench_gpu.zig`
+
+**Gate:** Hash matches sacred hash at 256²/500 using subgroup pipeline.
+
+**Benchmark target:** >10% improvement over standard (≥750M cells/sec from ~681M baseline).
+
+---
+
+#### ⬜ Phase 3.1: Coarse Shader (No Subgroups)
+
+**Prompt:** `Create generateWgslCoarse() — thread coarsening WITHOUT subgroups.
+Approach: expand tile to CTX=32 columns (STRIDE=34, tile 34×6=204 entries).
+Each 16×4 thread loads 2 global cells spaced TX=16 apart into shared expanded tile.
+Tile load: each thread writes ti_a=(lid.y+1)*STRIDE+(lid.x+1) AND
+ti_b=(lid.y+1)*STRIDE+(lid.x+1+TX). Halo loading: left-edge threads (lid.x==0)
+load halos for both x0 and x1 edges; right-edge threads (lid.x==CTX-1) load x1_r
+halo; interior-halo threads (lid.x==TX-1) load x0_r + x1_l transition halo.
+After barrier: compute cell A laplacian at lid.x offsets, then cell B at
+lid.x+TX offsets. Dispatch halves to ceil(W/CTX)=ceil(W/(2*TX)).
+Export via gs_wasm_build_coarse(). Verify hash, benchmark 256²/500.'
+
+**Invocation:**
+```
+/loop "Implement thread coarsening shader" --max-iterations 2
+```
+
+**Can run NOW** — doesn't require subgroups. Testable natively.
+
+**Known pitfall:** Expanded tile requires more SMEM (816 bytes vs 432 bytes for
+standard). Still well within limits (64KB+ per SM). Double-check periodic boundary
+select() logic near TX column boundary where cells from two regions meet.
+
+**Gate:** Sacred hash at 256²/500. Benchmark > standard baseline.
+
+---
+
+#### ⬜ Phase 3.2–3.4: Coarse+Subgroups + Bench Sweep
+
+**Prompt:** `Combine thread coarsening with subgroups: create generateWgslCoarseSubgroups().
+Start from generateWgslCoarse() template. Interior cells (lid.x∈[1,CTX-2], lid.y∈[1,TY-2])
+use subgroupShuffleUp/Down with ±1 for horizontal and ±TX for vertical within same warp.
+Edge/degenerate cells fall back to expanded SMEM reads. Benchmark all 4 variants
+(std, subgroups, coarse, coarse+subgroups) at 256²/500. Pick best per resolution bracket.
+Hash MUST match e16ed0e3... for all variants. Commit results to PERFORMANCE.md.'
+
+**Invocation:**
+```
+/loop "Coarse+subgroups combined variant" --max-iterations 3
+```
+
+**Depends on:** Phase 0 (Naga fixed) + Phase 3.1 done.
+
+**Note:** First attempt may encounter register pressure from 2 cells × (8 neighbor
+reads + intermediates). Monitor subgroupShuffle result correctness carefully —
+verify by comparing with SMEM-path results for edge cases.
+
+---
+
+#### ⬜ Phase 4: Temporal Blocking (2-Step Fusion)
+
+**Prompt:** `Create generateWgslTemporal() — process 2 time steps per global memory read.
+Approach: Load standard tile into SMEM. Step t: all threads compute u_t+1, v_t+1
+using subgroupShuffleUp/Down for neighbors. Store intermediates in per-thread
+local variables (not SMEM). Step t+1: use subgroup shuffles to exchange t+1 values
+within warp, compute Laplacian on those, produce final u_t+2, v_t+2 output.
+Dispatch: ceil(N/2) calls. Handle odd N: final pass does single step.
+Verify hash produces identical results as doing 2 standard steps sequentially
+(compare intermediate state at step t+1 between temporal and explicit stepping).
+Export via gs_wasm_build_temporal(). Benchmark vs subgroup-only baseline.'
+
+**Invocation:**
+```
+/loop "Implement temporal blocking shader" --max-iterations 4
+```
+
+**Weight:** HEAVY. Expected 20-40 min per attempt. Most complex shader variant.
+
+**Key challenge:** Maintaining hash equivalence through TWO layers of subgroup ops.
+SubgroupShuffleUp/Down must produce bit-identical intermediates to what the CPU
+would compute with sequential steps. Register pressure check: 2 steps ×
+(8 neighbor values + 2 self values) ≈ 20 registers per thread. Under 128 limit ✓.
+
+**Fallback if too complex:** Simplify to standard SMEM-only temporal blocking
+(as evaluated in Iter 11), combining with coarsening only.
+
+---
+
+#### ⬜ Phase 5: Dynamic Engine Selection
+
+**Prompt:** `Wire up gs_wasm_get_best() smart selector in wasm_shader.zig.
+Input: width, height, features_bitmask (bit 0=subgroups, bit 1=f16).
+Output: {shader_ptr, shader_len, tile_x, tile_y, variant_tag}.
+Decision logic: subgroups && steps>100 → temporal+coarse+subgroups;
+subgroups && steps≤100 → coarse+subgroups; subgroups only → subgroups;
+default → standard. Add resolution-adaptive workgroup shape selector
+(square→16×4, wide→32×2, tall→4×16). Ensure generation <1ms per call.
+Add non-divisible grid edge-masking. Create comprehensive benchmark matrix
+(all variants × 128²/256²/512²/1024² × 100/500/5000 steps) as build targets.'
+
+**Invocation:**
+```
+/loop "Dynamic engine selection" --max-iterations 3
+```
+
+**Does NOT require subgroups** — can use already-built WASM shader variants.
+If some variants are blocked, selector just omits them from decision tree.
+
+---
+
+### 🔁 Recommended /loop Execution Order
+
+```
+# 1. Prerequisite (blocks all subgroup work)
+/loop "Fix Naga subgroup blocker" --max-iterations 3
+
+# 2. Native-testable phases (can run in parallel with step 1)
+/loop "Complete Phase 2 subgroup integration" --max-iterations 3     # needs step 1
+/loop "Implement thread coarsening shader" --max-iterations 2        # runs NOW
+/loop "Coarse+subgroups combined variant" --max-iterations 3         # needs step 1+3.1
+/loop "Implement temporal blocking shader" --max-iterations 4        # needs step 1+all coarsening
+
+# 3. Final integration (runs regardless of subgroup status)
+/loop "Dynamic engine selection" --max-iterations 3                  # runs NOW
+```
+
+---
+
+### 🧹 Before Starting Any /loop
+
+```bash
+# 1. Verify clean state
+git status                    # should show clean working tree
+zig build test                # must pass
+
+# 2. Ensure .loop-prompt.md is current (this file IS the prompt)
+cat .loop-prompt.md           # verify no drift
+
+# 3. Optional: snapshot current benchmarks for comparison
+zig build bench-gpu 2>&1     # record baseline cells_per_second
+```
+
+### 🛑 After Each /loop
+
+```bash
+# Verify no regression
+git log --oneline -3          # check what was committed
+zig build test                # tests still pass
+zig build wasm-shader         # WASM builds
+```
+
+### 📊 Success Criteria Per Phase
+
+| Phase | Metric | Threshold |
+|---|---|---|
+| 2 | cells/sec vs standard | > +10% |
+| 3 | cells/sec vs standard | > +20% |
+| 4 | cells/sec vs subgroup-only | > +30% |
+| 5 | Init time at any res | < 5ms
