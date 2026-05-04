@@ -179,7 +179,7 @@ pub fn build(b: *std.Build) void {
         .name = "bench-gpu",
         .root_module = gpu_bench_mod,
     });
-    gpu_bench_exe.linkSystemLibrary("wgpu_native");
+    gpu_bench_mod.linkSystemLibrary("wgpu_native", .{});
 
     const gpu_bench_run = b.addRunArtifact(gpu_bench_exe);
     const lib_path = b.pathJoin(&.{ b.build_root.path.?, "vendor", "wgpu-native", "lib" });
@@ -217,7 +217,7 @@ pub fn build(b: *std.Build) void {
         .name = "bench-map",
         .root_module = map_bench_mod,
     });
-    map_bench_exe.linkSystemLibrary("wgpu_native");
+    map_bench_mod.linkSystemLibrary("wgpu_native", .{});
 
     const map_bench_run = b.addRunArtifact(map_bench_exe);
     map_bench_run.setEnvironmentVariable("PATH", new_path);
@@ -232,6 +232,74 @@ pub fn build(b: *std.Build) void {
     map_bench_1024.addArgs(&.{ "1024", "1024", "1000" });
     map_bench_1024.setEnvironmentVariable("PATH", new_path);
     b.step("bench-map-1024", "Map-bench at 1024^2, 1000 steps").dependOn(&map_bench_1024.step);
+
+    // ====================================================================
+    // Map-Bench CPU (for GPU vs CPU pipeline comparison)
+    // ====================================================================
+    const map_cpu_mod = b.createModule(.{
+        .root_source_file = b.path("BENCHMARK/bench_map_cpu.zig"),
+        .target = target,
+        .optimize = .ReleaseFast,
+    });
+    map_cpu_mod.addImport("gray_scott_grid", grid_mod);
+    map_cpu_mod.addImport("gray_scott_sim", sim_mod);
+
+    const map_cpu_exe = b.addExecutable(.{
+        .name = "bench-map-cpu",
+        .root_module = map_cpu_mod,
+    });
+
+    const map_cpu_run = b.addRunArtifact(map_cpu_exe);
+    b.step("bench-map-cpu", "CPU map-bench: full pipeline at 256^2, 500 steps (GPU-comparable)").dependOn(&map_cpu_run.step);
+
+    var map_cpu_5000 = b.addRunArtifact(map_cpu_exe);
+    map_cpu_5000.addArgs(&.{ "256", "256", "5000" });
+    b.step("bench-map-cpu-5k", "CPU map-bench at 256^2, 5000 steps").dependOn(&map_cpu_5000.step);
+
+    var map_cpu_512 = b.addRunArtifact(map_cpu_exe);
+    map_cpu_512.addArgs(&.{ "512", "512", "500" });
+    b.step("bench-map-cpu-512", "CPU map-bench at 512^2, 500 steps").dependOn(&map_cpu_512.step);
+
+    var map_cpu_512_5k = b.addRunArtifact(map_cpu_exe);
+    map_cpu_512_5k.addArgs(&.{ "512", "512", "5000" });
+    b.step("bench-map-cpu-512-5k", "CPU map-bench at 512^2, 5000 steps").dependOn(&map_cpu_512_5k.step);
+
+    var map_cpu_1024 = b.addRunArtifact(map_cpu_exe);
+    map_cpu_1024.addArgs(&.{ "1024", "1024", "100" });
+    b.step("bench-map-cpu-1024", "CPU map-bench at 1024^2, 100 steps").dependOn(&map_cpu_1024.step);
+
+    // ====================================================================
+    // Pearson Map (GPU Neumann + spatial f/k gradient → PGM output)
+    // ====================================================================
+    const pearson_mod = b.createModule(.{
+        .root_source_file = b.path("BENCHMARK/bench_map_pearson.zig"),
+        .target = target,
+        .optimize = .ReleaseFast,
+    });
+    pearson_mod.addIncludePath(b.path("vendor/wgpu-native/include"));
+    pearson_mod.addLibraryPath(b.path("vendor/wgpu-native/lib"));
+    pearson_mod.link_libc = true;
+    pearson_mod.addImport("gray_scott_gpu", gpu_mod);
+
+    const pearson_exe = b.addExecutable(.{
+        .name = "bench-map-pearson",
+        .root_module = pearson_mod,
+    });
+    pearson_mod.linkSystemLibrary("wgpu_native", .{});
+
+    const pearson_run = b.addRunArtifact(pearson_exe);
+    pearson_run.setEnvironmentVariable("PATH", new_path);
+    b.step("bench-map-pearson", "GPU Pearson map: spatial f/k gradient, Neumann boundaries, PGM output (default 1024^2, 50000 iters)").dependOn(&pearson_run.step);
+
+    var pearson_2048 = b.addRunArtifact(pearson_exe);
+    pearson_2048.addArgs(&.{ "2048", "2048", "50000" });
+    pearson_2048.setEnvironmentVariable("PATH", new_path);
+    b.step("bench-map-pearson-2k", "GPU Pearson map at 2048^2, 50000 iters").dependOn(&pearson_2048.step);
+
+    var pearson_4096 = b.addRunArtifact(pearson_exe);
+    pearson_4096.addArgs(&.{ "4096", "4096", "50000" });
+    pearson_4096.setEnvironmentVariable("PATH", new_path);
+    b.step("bench-map-pearson-4k", "GPU Pearson map at 4096^2, 50000 iters").dependOn(&pearson_4096.step);
 
     // Debug compare target
     const debug_mod = b.createModule(.{
@@ -249,7 +317,7 @@ pub fn build(b: *std.Build) void {
         .name = "debug-compare",
         .root_module = debug_mod,
     });
-    debug_exe.linkSystemLibrary("wgpu_native");
+    debug_mod.linkSystemLibrary("wgpu_native", .{});
     const debug_run = b.addRunArtifact(debug_exe);
     b.step("debug-compare", "Compare CPU vs GPU first step").dependOn(&debug_run.step);
 }

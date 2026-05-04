@@ -94,7 +94,64 @@ Target achieved: 23× over original >100M goal at 256².
 ## 🔥 Phase N — Map Integration & Adaptive Convergence
 - [x] **N.1** Build a map-bench target that runs actual pattern generation (not just the 500-step tight loop)
   - Tests end-to-end pipeline: init → seeded fill → steps → readback → render
-- [ ] **N.2** Implement convergence tracking: check `|Δu| < epsilon` per-tile, skip workgroups that converged
-  - Add a second compute pass that reads output diff, writes a "converged" flag bitmap
-  - Main compute pass checks flag before dispatching
-- [ ] **N.3** Benchmark map mode against CPU reference. Keep if faster.
+- [BLOCKED: No convergence at benchmark scale] **N.2** Implement convergence tracking
+  - Two attempts reverted — per-step overhead exceeds savings (no convergence within 500–5000 steps at f=0.0545/k=0.062)
+- [x] **N.3** Benchmark map mode against CPU reference. Keep if faster.
+  - Step-only: GPU 3–14× faster at all scales
+  - Pipeline (init inc): GPU wins at 512²+ (2.6–4.1×); CPU wins at 256² due to wgpu-native init overhead (~1.3s)
+  - CPU hashes verified, BENCHMARK/bench_map_cpu.zig added with build targets
+  - **Verdict: KEEP**. GPU dramatically faster for simulations; only one-shot tiny grids benefit from CPU
+
+---
+
+# Phase O–S: Deep Optimization Round (based on roofline analysis)
+
+## Critical Correction
+The "compute-bound" diagnosis was wrong. Roofline math:
+- AI = 1.56 FLOPs/byte (bandwidth-bound region), ridge point = 55.6 FLOPs/byte
+- Theoretical BW ceiling: **13.25B cells/sec** at 272 GB/s
+- Current 2.35B = **only 17.7% of achievable**
+- Flat throughput across scales means working set fits in cache, NOT that compute is saturated
+- Kernel is latency-bound by shared memory access patterns + occupancy, not FLOP-limited
+- Top stencil codes reach 50-80% of bandwidth → **5-12B cells/sec is realistic target**
+
+## 🔥 Phase O — Fix Shared Memory Bank Conflicts (Expected +10-15%)
+- [ ] **O.1** Research: 10×10 tile with stride-10 column access causes bank conflicts on 32-bank SMEM (stride 10 ≡ 2-way conflict). Solution: pad workgroup arrays to 16-wide strides.
+- [ ] **O.2** Implement padded shared memory layout in `generateWgsl()`: change `array<f32, (TX+2)*(TY+2)>` to `array<f32, (TX+2)*16>` with stride-16 addressing.
+- [ ] **O.3** Benchmark vs baseline. Keep if median > 2.6B. Verify hash matches `e16ed0e3...`.
+
+## 🔥 Phase P — Temporal Blocking / Multi-Step Fusion (Expected +50-100%)
+- [ ] **P.1** Research 2-step temporal blocking for 9-point 2D stencil. With 1-cell halo (10×10→8×8), extend to 3-cell halo (14×14→8×8 interior for step t, 6×6 interior for step t+1). LBNL bricks paper: 1.6×. cutile-stencil: 1.5–1.8×.
+- [ ] **P.2** Implement in `generateWgsl()`:
+  - Expand tile load to 14×14 (4× halo expansion)
+  - Compute step t across full 14×14→12×12 active region
+  - Barrier, then compute step t+1 across 12×12→10×10 active region
+  - Write 8×8 output (center of 10×10 after barrier)
+  - Register pressure: ~2× intermediate state per thread — monitor for spills
+- [ ] **P.3** Benchmark vs baseline. Keep if median > 3.5B. Hash verification per normal gating.
+
+## 🔥 Phase Q — Thread Coarsening (Expected +20-50%)
+- [ ] **Q.1** Each thread computes 2 (horizontal pair) or 4 (2×2 block) cells instead of 1. Hou et al. (2017): 1.4–1.8× on stencils. Amortizes index calculations, exposes ILP to compiler FMA scheduling.
+- [ ] **Q.2** Implement in `generateWgsl()`. Option A (simplest): 16×4 workgroup where each thread processes adjacent x+x+1 cells. Must keep shader hash identical.
+- [ ] **Q.3** Sweep coarsening factors: 2-cell horizontal, 4-cell 2×2. Benchmark each. Pick best.
+
+## 🔥 Phase R — Warp-Locality Workgroup Reshape (Expected +10-20%)
+- [ ] **R.1** Current 8×8 = 64 threads = 2 warps. Reshape to 16×4 or 32×2 so vertical/horizontal neighbors share a warp — enables future subgroup shuffle sharing without barriers. Even without subgroups, improves L1 coalescing.
+- [ ] **R.2** Test candidate shapes: 16×4, 32×2, 8×8 (baseline). Sweep. Record occupancy and throughput.
+- [ ] **R.3** Select best shape. Update `GpuState.wg_x`/`wg_y`.
+
+## 🔥 Phase S — Subgroup Shuffle Intra-Warp Data Sharing (Expected +10-25%, contingent on naga)
+- [ ] **S.1** Check wgpu-native/naga status for `enable subgroups;` acceptance (gap tracked at gfx-rs/wgpu#8202). On Vulkan backend, VK_EXT_subgroup_size_control provides 32-thread subgroups.
+- [ ] **S.2** If available: replace shared memory column loads with `subgroupShuffleDown`/`subgroupShuffleUp` within warps. Eliminates SMEM bank conflicts entirely for intra-warp data sharing.
+- [ ] **S.3** Benchmark. If blocked by naga, mark `[BLOCKED: naga #8202 not resolved]`.
+
+## Combined Projection
+| Technique | Expected Gain | Cumulative |
+|---|---|---|
+| Current best | — | 2.35B |
+| + Bank conflict fix (Phase O) | 1.15× | 2.7B |
+| + Temporal blocking (Phase P) | 1.5–1.8× | 4.0–4.9B |
+| + Thread coarsening (Phase Q) | 1.3× | 5.2–6.3B |
+| + Warp-locality reshape (Phase R) | 1.15× | 6.0–7.3B |
+| + Subgroup shuffle (Phase S) | 1.15× | 6.9–8.4B |
+| **Target range** | | **7–12B cells/sec** |

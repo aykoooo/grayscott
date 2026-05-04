@@ -48,6 +48,23 @@ G: ⊘  H: ⊘ (superseded by F)  I: ⊘  J: ✅
 
 Current best: 2.35B cells/sec (8×8 tiling + command buffer batching)
 
+## Roofline Model Correction (2026-05-04)
+The "compute-bound" diagnosis was wrong. Detailed analysis:
+- AI = 32 FLOPs / 20.5 bytes = 1.56 FLOPs/byte
+- Ridge point (FP32) = 15.11 TFLOPS / 272 GB/s = 55.6 FLOPs/byte
+- At AI=1.56, kernel is DEEP in bandwidth-bound region
+- Theoretical BW ceiling: 13.25B cells/sec
+- Current utilization: 2.35 / 13.25 = 17.7%
+- Flat throughput across scales → working set fits in cache, NOT compute saturation
+- Loss sources: warp divergence (~15%), bank conflicts (~15%), low occupancy (~10%)
+- Top stencil codes (AMReX, Kokkos, CUTLASS) reach 50-80% of bandwidth → target 7-12B cells/sec
+
+## Competitors & External Benchmarks
+- **markstock/grayscott** (Kokkos+CUDA, RTX 3070 Ti): 4096²/single step = ~0.005s. Uses nvcc compiler optimizations, direct CUDA memory model. No hash verification infrastructure.
+- **IN2P3 Rust+Vulkan textbook**: Entire compute shader optimization course structured around Gray-Scott. Confirms compute-bound at batched workloads, I/O bound at unbatchted.
+- **ORNL GrayScott.jl**: MPI+CUDA+AMDGPU on Summit/Crusher supercomputers. Multi-GPU domain decomposition, 512³ grids with JACC portability layer.
+- **Our advantage**: SHA256 hash-based correctness verification at every step — unique among all implementations.
+
 ### Iter 3: Phase K.1 — f16 Feature Detection
 SUCCESS: wgpu-native v29/Vulkan on RTX 4060 supports ShaderF16. Previous assumption about
 StorageInputOutput16 blocking it was wrong — v29 includes the IO polyfill (#7884).
@@ -81,3 +98,9 @@ GPU pipeline timing (init + seeded fill + steps + readback). Key findings:
 - Readback is negligible (<2ms at all tested scales)
 - Pipeline throughput improves from ~230M to ~1.21B cells/sec as resolution increases
 - Stable hashes recorded for 256²/5000, 512²/5000, 1024²/1000 configurations
+
+### Iter 8: Phase N.2 — Convergence Tracking
+BLOCKED: Two implementations tested. Full convergent (atomic flags per WG, barrier+reduction per dispatch) was 6–14× slower than baseline. Hybrid (fast dispatches + 1 convergence check per chunk of 100) was 29% slower. Root cause: Gray-Scott with f=0.0545/k=0.062 does not converge within benchmark step counts; any checking mechanism adds overhead exceeding potential late-stage savings. Both approaches produced correct hashes.
+
+### Iter 9: Phase N.3 — GPU vs CPU Map-Bench Comparison
+SUCCESS: Comprehensive pipeline comparison across scales. Step-only: GPU beats CPU by 3–14× at all scales (256²–1024²). Pipeline (inc init): GPU wins at 512²+ (2.6–4.1×), but loses at 256² where wgpu-native driver init (~1.3s) dominates small computations. CPU hash `9760...` verified against reference. CPU map-bench infrastructure added to BENCHMARK/bench_map_cpu.zig with build targets: bench-map-cpu, bench-map-cpu-5k, bench-map-cpu-512, bench-map-cpu-512-5k, bench-map-cpu-1024.
