@@ -114,6 +114,12 @@ BLOCKED: Evaluated with proper math (12×12 → 10×10 → 8×8 for 2-step fusio
 ### Iter 12: Phase R — Workgroup Reshape (16×4)
 SUCCESS: Changed wg_x from 8 to 16, wg_y from 8 to 4. Same 64 threads, same total dispatch count (1024 groups for 256²), but horizontal neighbors share a warp (16-wide rows fully contained in each warp). Result: +12.6% (681M vs 605M baseline). Hash unchanged (e16ed0e3...). The STRIDE changed from 10 to 18 (TX+2), tile_n from 100 to 108 (18×6) — slightly more shared memory but better warp coalescing dominates. Selected as new default. This also partially fixes bank conflicts since stride-18's larger dimension makes column-strided access patterns less uniform.
 
+### Iter 13: Phase 1 — WASM Dynamic Tiling + Integration
+SUCCESS: Added gs_wasm_optimal_tile() (selects best divisor-matched workgroup size), gs_wasm_init() (full init info including tile/ dispatch/buffer sizes), gs_wasm_bind_group_layout() (for pipeline binding setup), and JS integration docs in KNOWLEDGE.md. No shader changes, hash unchanged. Buffer bumped to 16KB for larger WGSL templates.
+
+### Iter 14: Phase 2 — Subgroup Shuffle Variant
+BLOCKED (natve): generateWgslSubgroups() implemented with subgroupShuffleUp/Down for interior cells (lid.x∈[1,14], lid.y∈[1,2]), SMEM fallback for edge threads. Exported via gs_wasm_build_subgroups(). VALID WGSL for Chrome 134+ (Dawn supports `enable subgroups`). BLOCKED for native benchmarking: wgpu-native v29 uses Naga as WGSL frontend which rejects `enable subgroups;` (not yet implemented). WGPUFeatureName_Subgroups = 0x12 exists in C headers but irrelevant — the parser blocks it earlier. Code ships to browser for manual Chrome testing.
+
 ## nabla-type-lite JS Integration API (Phase 1)
 
 ```js

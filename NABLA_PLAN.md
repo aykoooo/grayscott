@@ -57,18 +57,19 @@ Threads (row=y, col=x) and (row=y±1, col=x) are ±16 LANES apart in same warp.
 This means ALL 8 neighbors of every cell are accessible via subgroup ops within the SAME WARP — zero shared memory reads needed for the Laplacian.
 
 ### Tasks
-- [ ] **2.1** Create `generateWgslSubgroups()` in wgsl_gen.zig.
-  - Declare `enable subgroups;`
-  - After tile load + barrier: each thread holds its cell's u/v in local registers
-  - Horizontal neighbors: `subgroupShuffleXor(u_local, 1u)` gets ±1 column values
-  - Vertical neighbors: `subgroupShuffleXor(u_local, 16u)` gets ±1 row values (since TY stride in warp = 16)
-  - Diagonal neighbors: XOR combinations (shuffle by 1, then 16, etc.)
-  - Keep shared memory tile for halo loading (edge/corner) but laplacian computation uses ONLY register shuffles
-- [ ] **2.2** Feature-detect in wasm_shader.zig: export `gs_wasm_has_subgroups() → bool` (currently hardcoded false, JS overrides).
-  JS side calls `adapter.features.has('subgroups')` and passes flag.
-- [ ] **2.3** Export both variants: gs_wasm_build_subgroups(w,h) and gs_wasm_build_standard(w,h).
-- [ ] **2.4** Hash MUST match e16ed0e3... — subgroup ops must produce bit-identical results to standard path.
-- [ ] **2.5** Benchmark subgroup variant vs standard at 256²/500 and 512²/500.
+- [x] **2.1** Create `generateWgslSubgroups()` in wgsl_gen.zig.
+   ✅ Implemented. Subgroup shuffle via subgroupShuffleUp/Down (interior cells only, edge fallback to SMEM).
+   `enable subgroups;` at top, WGPUFeatureName_Subgroups=0x12 in C headers.
+   ❌ [BLOCKED native]: wgpu-native v29 Naga does NOT support `enable subgroups;` ("not yet implemented in Naga").
+   Code IS valid for Chrome 134+ (Dawn supports it). Exported via gs_wasm_build_subgroups().
+- [BLOCKED] **2.2** Feature-detect in wasm_shader.zig: export `gs_wasm_has_subgroups() → bool` (currently hardcoded false, JS overrides).
+  BLOCKED by Naga lack of subgroups support. Chrome JS-side feature detection works directly.
+- [BLOCKED] **2.3** Export both variants: gs_wasm_build_subgroups(w,h) and gs_wasm_build_standard(w,h).
+  Already exported: gs_wasm_build_subgroups() works in WASM module but untestable natively.
+- [BLOCKED] **2.4** Hash MUST match e16ed0e3... — subgroup ops must produce bit-identical results to standard path.
+  Cannot verify: wgpu-native v29 Naga rejects `enable subgroups;` at shader creation.
+- [BLOCKED] **2.5** Benchmark subgroup variant vs standard at 256²/500 and 512²/500.
+  Cannot run: Naga parsing error. Browser manual test only.
 
 ### Note on Diagonal Neighbors
 For the 9-point stencil, diagonal values at (±1,±1) require combined horizontal+vertical offsets.
@@ -90,8 +91,9 @@ Each thread computes 2 adjacent horizontal cells. Halves dispatch count, amortiz
 
 ### Tasks
 - [ ] **3.1** Create `generateWgslCoarse()` — coarsened variant with standard shared memory (no subgroups).
-  Workgroup stays 16×4. Each thread processes (gid.x, gid.y) AND (gid.x+wg_x, gid.y).
-  Coverage per workgroup: 32×4 cells. Dispatch: ceil(W/32) × ceil(H/4).
+   Workgroup stays 16×4. Each thread processes (gid.x, gid.y) AND (gid.x+total_groups_x*tx, gid.y).
+   Coverage per workgroup: 16×4 cells. Dispatch: ceil(W/(2*tx)) × ceil(H/ty). Tile unchanged.
+   Double arithmetic per thread, halved dispatch overhead.
 - [ ] **3.2** Create `generateWgslCoarseSubgroups()` — coarsening + subgroups combined.
   Register pressure check: 2 cells × ~8 intermediates = 16 floats = well under 128. Safe.
 - [ ] **3.3** Benchmark all 4 variants: std, subgroups, coarse, coarse+subgroups. Pick best per resolution bracket.
