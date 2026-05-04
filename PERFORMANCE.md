@@ -52,21 +52,31 @@ Current best: **2,346,051,133 cells/sec** (8×8 tiling + command buffer batching
 
 **Finding**: Throughput constant across scales → **compute-bound**, not bandwidth-limited.
 
-## Phase N.1: Map-Bench — End-to-End Pipeline Benchmark
+## Phase N.3: GPU vs CPU Map-Bench Comparison
 
-| Resolution | Steps | Step cells/sec | Pipeline cells/sec | Init ms | Step ms | Readback ms |
-|---|---|---|---|---|---|---|
-| 256² | 5000 | ~2.70B | ~230M | 1302 | 122 | 1.1 |
-| 512² | 5000 | ~4.09B | ~838M | 1243 | 320 | 0.7 |
-| 1024² | 1000 | ~4.20B | ~1.21B | 613 | 250 | 1.9 |
+Uniform f=0.0545/k=0.062, periodic boundaries, same seed pattern (RNG=42).
 
-**Hashes** (end-to-end pipeline, uniform f/k, periodic boundaries):
-- 256²/5000 steps: `df07ec44f702a7e63df3aa2ad24567d820dbfed3df20d435312cdaa66f455380`
-- 512²/5000 steps: `b845273374ce78941247a631e0304bf0fb480dcc8b712dc304e8cc07b105dab9`
-- 1024²/1000 steps: `40b0266b58271864e5c6d5eed6b8dd2747a0767cbdb7f8e90f431f32021c4abc`
+### Pipeline Throughput (init + steps + readback)
 
-**Key findings**:
-- Init is dominant cost at small resolutions (91% of total at 256²), amortizes at larger grids (71% at 1024²)
-- Step-only throughput ~matches existing bench-gpu results (2.7–4.2B cells/sec)
-- Readback cost is negligible (<2ms at all scales)
-- **Build step**: `zig build bench-map` (default 256²/5000), `bench-map-512`, `bench-map-1024`
+| Resolution | Steps | GPU pipeline cells/sec | CPU pipeline cells/sec | Speedup | Winner |
+|---|---|---|---|---|---|
+| 256² | 5000 | ~230M | ~922M | 0.25× | CPU (GPU init ~1.3s dominates) |
+| 512² | 5000 | ~838M | ~323M | 2.6× | GPU |
+| 1024² | 1000 | ~1,210M | ~297M | 4.1× | GPU |
+
+### Step-Only Throughput
+
+| Resolution | GPU step cells/sec | CPU step cells/sec | Speedup |
+|---|---|---|---|
+| 256² | ~2,700M | ~922M | 2.9× |
+| 512² | ~4,090M | ~323M | 12.7× |
+| 1024² | ~4,200M | ~299M | 14.0× |
+
+### CPU Hashes (periodic, uniform f/k)
+- 256²/500: `9760dfcdb5f49c3bd738ab33afee8be84e56aa31fd2f389cde25faaaeb19bb95`
+- 256²/5000: `bdee302bbec5237a232c58019c3550395ddcc8f4d909a6a4df32e972dadd8865`
+- 512²/500: `1db5da6286057b4cd653d8f8e952b5009682b30c70d36ee7e2af9125ae884d5a`
+- 512²/5000: `1c978c1f00dab1716a60ad53370e2c34f529f4bf6c283c7cb62601726abc493d`
+- 1024²/100: `54ebacb5b6c159510f013fa6baa6e7f07132b98d56490366c1289a2a75d737fa`
+
+**Verdict**: GPU step-only throughput dominates CPU at all scales (3–14×). Pipeline (total time) favors GPU at 512²+; at 256² the wgpu-native driver/instance init (~1.3s) overshadows computation. For multi-step simulation maps, GPU provides dramatic advantage.
