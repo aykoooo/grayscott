@@ -113,3 +113,100 @@ BLOCKED: Evaluated with proper math (12×12 → 10×10 → 8×8 for 2-step fusio
 
 ### Iter 12: Phase R — Workgroup Reshape (16×4)
 SUCCESS: Changed wg_x from 8 to 16, wg_y from 8 to 4. Same 64 threads, same total dispatch count (1024 groups for 256²), but horizontal neighbors share a warp (16-wide rows fully contained in each warp). Result: +12.6% (681M vs 605M baseline). Hash unchanged (e16ed0e3...). The STRIDE changed from 10 to 18 (TX+2), tile_n from 100 to 108 (18×6) — slightly more shared memory but better warp coalescing dominates. Selected as new default. This also partially fixes bank conflicts since stride-18's larger dimension makes column-strided access patterns less uniform.
+
+## nabla-type-lite JS Integration API (Phase 1)
+
+```js
+// ---- 1. Load WASM shader module ----
+const wasmModule = await WebAssembly.instantiateStreaming(
+    fetch('gray_scott_shader.wasm'),
+    { env: {} }
+);
+const { exports: wasm } = wasmModule.instance;
+
+// Read C-string from WASM linear memory
+function readString(ptr, len) {
+    const buf = new Uint8Array(wasm.memory.buffer, ptr, len);
+    return new TextDecoder().decode(buf);
+}
+
+// ---- 2. Initialize for arbitrary resolution ----
+const W = 512, H = 512;
+const info = wasm.gs_wasm_init(W, H);
+// info = { tile_x, tile_y, workgroup_x, workgroup_y,
+//          dispatch_x, dispatch_y, buffer_size,
+//          grid_width, grid_height }
+
+// ---- 3. Get WGSL shader source ----
+const shaderResult = wasm.gs_wasm_build_periodic(W, H, info.tile_x, info.tile_y);
+const wgslSource = readString(shaderResult.ptr, shaderResult.len);
+
+// ---- 4. Get bind group layout ----
+const bgLayout = wasm.gs_wasm_bind_group_layout(0); // 0=periodic
+// bgLayout.count = 5 bindings:
+//   @binding(0) storage RO → u_in
+//   @binding(1) storage RO → v_in
+//   @binding(2) storage RW → u_out
+//   @binding(3) storage RW → v_out
+//   @binding(4) uniform     → params
+
+// ---- 5. Configure WebGPU ----
+const device = await adapter.requestDevice();
+const bufsize = info.buffer_size; // W*H*4 per buffer
+
+const u0 = device.createBuffer({ size: bufsize, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+const v0 = device.createBuffer({ size: bufsize, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+const u1 = device.createBuffer({ size: bufsize, usage: GPUBufferUsage.STORAGE });
+const v1 = device.createBuffer({ size: bufsize, usage: GPUBufferUsage.STORAGE });
+const paramBuf = device.createBuffer({ size: 20, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+
+const bindGroup0 = device.createBindGroup({
+    layout: pipeline.getBindGroupLayout(0),
+    entries: [
+        { binding: 0, resource: { buffer: u0 } },
+        { binding: 1, resource: { buffer: v0 } },
+        { binding: 2, resource: { buffer: u1 } },
+        { binding: 3, resource: { buffer: v1 } },
+        { binding: 4, resource: { buffer: paramBuf } },
+    ],
+});
+
+const bindGroup1 = device.createBindGroup({
+    layout: pipeline.getBindGroupLayout(0),
+    entries: [
+        { binding: 0, resource: { buffer: u1 } },  // ping-pong swap
+        { binding: 1, resource: { buffer: v1 } },
+        { binding: 2, resource: { buffer: u0 } },
+        { binding: 3, resource: { buffer: v0 } },
+        { binding: 4, resource: { buffer: paramBuf } },
+    ],
+});
+
+const shaderModule = device.createShaderModule({ code: wgslSource });
+const pipeline = device.createComputePipeline({
+    layout: 'auto',
+    compute: { module: shaderModule },
+});
+
+// ---- 6. Simulation loop ----
+const N = 500;
+const encoder = device.createCommandEncoder();
+
+for (let step = 0; step < N; step++) {
+    const bg = (step % 2 === 0) ? bindGroup0 : bindGroup1;
+    const pass = encoder.beginComputePass();
+    pass.setPipeline(pipeline);
+    pass.setBindGroup(0, bg);
+    pass.dispatchWorkgroups(info.dispatch_x, info.dispatch_y, 1);
+    pass.end();
+}
+
+device.queue.submit([encoder.finish()]);
+
+// ---- 7. Resolution change ----
+function onChangeResolution(newW, newH) {
+    const newInfo = wasm.gs_wasm_init(newW, newH);
+    const newShad = wasm.gs_wasm_build_periodic(newW, newH, newInfo.tile_x, newInfo.tile_y);
+    // Reallocate buffers with newInfo.buffer_size, recreate pipeline
+}
+```

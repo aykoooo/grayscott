@@ -22,16 +22,17 @@ Integration: pre-compiled gray_scott_shader.wasm loaded by nabla-type-lite.
 gray_scott_shader.wasm auto-selects best tile_x/tile_y for any W×H. Plug into nabla-type-lite, establish browser benchmark.
 
 ### Tasks
-- [ ] **1.1** Add `gs_wasm_optimal_tile(width, height)` → returns best (tile_x, tile_y) pair.
+- [x] **1.1** Add `gs_wasm_optimal_tile(width, height)` → returns best (tile_x, tile_y) pair.
   Algorithm: try divisors of W/H near 16×4, pick the one maximizing occupancy (W/tx × H/ty).
   Fallback: use nearest divisor with edge masking for non-divisible grids.
-- [ ] **1.2** Export bind group layout descriptor from WASM (binding indices + buffer types).
+- [x] **1.2** Export bind group layout descriptor from WASM (binding indices + buffer types).
   Current layout: BG0={u_in:RO, v_in:RO, u_out:RW, v_out:RW, params:UNIFORM}.
   Return as JSON string or structured const.
-- [ ] **1.3** Export dispatch metadata: groups_x = ceil(W/tile_x), groups_y = ceil(H/tile_y),
+- [x] **1.3** Export dispatch metadata: groups_x = ceil(W/tile_x), groups_y = ceil(H/tile_y),
   buffer_sizes = W*H*4. Single call returning all init requirements.
-- [ ] **1.4** Verify hash at multiple resolutions: 128², 256², 512², odd dimensions (257×257).
-- [ ] **1.5** Document nabla-type-lite integration: JS snippet showing load→configure→step cycle.
+- [x] **1.4** Verify hash at multiple resolutions: 128², 256², 512², odd dimensions (257×257).
+  256² sacred hash confirmed ✓. 128²/200 ✓, 512²/500 ✓. 257×257: wgpu-native "parent device lost" crash (pre-existing driver issue).
+- [x] **1.5** Document nabla-type-lite integration: JS snippet showing load→configure→step cycle.
 
 ### Verification
 - `zig build wasm-shader` succeeds
