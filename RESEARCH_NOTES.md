@@ -82,3 +82,10 @@ enable f16;
 - **Throughput**: ~1.2–1.7B cells/sec at 256²/500 (cold start), vs f32 best of 2.35B. At thermally-degraded state: f16=828M, f32=759M (+9% advantage).
 - **Root cause**: Compute-bound at all tested scales. Shared memory tiling makes global bandwidth savings invisible.
 - **Verdict**: Reverted. Code complexity not justified by zero perf gain. Knowledge preserved for future larger-scale work.
+
+## 2026-05-04 — Phase O: Shared Memory Bank Conflict Analysis
+
+- Sources: apxml.com (shared memory banking), gpudemystified.com (padding fix)
+- Key finding: Standard padding fix is stride → stride+1 (must be coprime with 32). For 8×8 workgroup with stride-10: gcd(10,32)=2 → 2-way conflicts on 6/32 threads per warp. striding to 11 (gcd=1) eliminates all conflicts theoretically, but measured impact <5% — below noise floor. striding to 16 (power-of-2 address calc) also tested — slightly worse.
+- Verification: Hash `e16ed0e3...` matches across both variants. Per-thread bank mapping analyzed via manual GCD enumeration.
+- Conclusion: At 8×8 workgroup scale, 2-way bank conflicts on only a fraction of warp threads are too mild to matter. Marked blocked. Revisit if temporal blocking or thread coarsening significantly changes workgroup shape.

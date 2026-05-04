@@ -116,9 +116,9 @@ The "compute-bound" diagnosis was wrong. Roofline math:
 - Top stencil codes reach 50-80% of bandwidth → **5-12B cells/sec is realistic target**
 
 ## 🔥 Phase O — Fix Shared Memory Bank Conflicts (Expected +10-15%)
-- [ ] **O.1** Research: 10×10 tile with stride-10 column access causes bank conflicts on 32-bank SMEM (stride 10 ≡ 2-way conflict). Solution: pad workgroup arrays to 16-wide strides.
-- [ ] **O.2** Implement padded shared memory layout in `generateWgsl()`: change `array<f32, (TX+2)*(TY+2)>` to `array<f32, (TX+2)*16>` with stride-16 addressing.
-- [ ] **O.3** Benchmark vs baseline. Keep if median > 2.6B. Verify hash matches `e16ed0e3...`.
+- [BLOCKED: <5% impact below noise floor at 8×8 workgroup scale] **O.1** Research: 10×10 tile with stride-10 column access causes bank conflicts on 32-bank SMEM (stride 10 ≡ 2-way conflict). Solution: pad workgroup arrays to 16-wide strides.
+- [BLOCKED: same] **O.2** Implement padded shared memory layout in `generateWgsl()`: change `array<f32, (TX+2)*(TY+2)>` to `array<f32, (TX+2)*16>` with stride-16 addressing.
+- [BLOCKED: same] **O.3** Benchmark vs baseline. Keep if median > 2.6B. Verify hash matches `e16ed0e3...`.
 
 ## 🔥 Phase P — Temporal Blocking / Multi-Step Fusion (Expected +50-100%)
 - [ ] **P.1** Research 2-step temporal blocking for 9-point 2D stencil. With 1-cell halo (10×10→8×8), extend to 3-cell halo (14×14→8×8 interior for step t, 6×6 interior for step t+1). LBNL bricks paper: 1.6×. cutile-stencil: 1.5–1.8×.

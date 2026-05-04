@@ -26,6 +26,12 @@ Current best: **2,346,051,133 cells/sec** (8×8 tiling + command buffer batching
 | 2026-05-03 | Shared memory tiling (8×8 workgroup, 10×10 tile) | 167,680,984 | +85.8% | ✅ Best (tiling) |
 | 2026-05-03 | + Command buffer batching (500 dispatches in 1 submit) | 2,346,051,133 | +2,500% | ✅ Current Best |
 
+## Phase O Results: Shared Memory Bank Conflict Fix
+| Date | Technique | Cells/sec | Improvement | Status |
+|---|---|---|---|---|
+| 2026-05-04 | Stride-11 padding (gcd=1, zero-bank-conflict theory) | ~580M | ~0% | ❌ Reverted — no measurable improvement |
+| 2026-05-04 | Stride-16 padding (power-of-2 address calc) | ~547M | ~0% | ❌ Reverted — no measurable improvement |
+
 ### Workgroup Size Sweep
 | Size | Cells/sec | Result |
 |---|---|---|

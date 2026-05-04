@@ -104,3 +104,6 @@ BLOCKED: Two implementations tested. Full convergent (atomic flags per WG, barri
 
 ### Iter 9: Phase N.3 — GPU vs CPU Map-Bench Comparison
 SUCCESS: Comprehensive pipeline comparison across scales. Step-only: GPU beats CPU by 3–14× at all scales (256²–1024²). Pipeline (inc init): GPU wins at 512²+ (2.6–4.1×), but loses at 256² where wgpu-native driver init (~1.3s) dominates small computations. CPU hash `9760...` verified against reference. CPU map-bench infrastructure added to BENCHMARK/bench_map_cpu.zig with build targets: bench-map-cpu, bench-map-cpu-5k, bench-map-cpu-512, bench-map-cpu-512-5k, bench-map-cpu-1024.
+
+### Iter 10: Phase O — Shared Memory Bank Conflict Fix
+BLOCKED: Two variants tested (stride-11 for gcd(stride,32)=1 zero-conflict theory; stride-16 for power-of-2 address calc optimization). Both measured within noise (±5%) of baseline (~600M). Root cause: 8×8 workgroup = 64 threads = 2 warps × 32, only 6 out of 32 threads per warp experience 2-way conflicts on column loads. At this scale, bank conflict penalty is <5% and invisible in measurement noise. Fixing this isn't currently worth the code complexity or shared memory cost (padding wastes 10-60 bytes per row). Would only matter at larger workgroup sizes (16×16+). Marked blocked — revisit if/when temporal blocking or thread coarsening changes workgroup shape.
