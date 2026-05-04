@@ -8,6 +8,11 @@ Persistent benchmark tracker. This file survives crashes and restarts.
 |---|---|---|---|---|
 | 2026-05-03 | Naive GPU (9-point stencil, global mem) | 90,247,944 | — | ✅ Baseline |
 
+## Phase 3.1: Thread Coarsening Attempt
+| Date | Technique | Cells/sec | Improvement | Status |
+|---|---|---|---|---|
+| 2026-05-04 | Horizontal coarsening (2 cells/thread, cell B via global reads) | ~1.07B median | -34% vs standard (~1.62B) | ❌ Reverted — global reads penalty outweighs dispatch savings |
+
 ## Reference
 - GPU hash (256²/500 steps): `e16ed0e3c29cc50b5fa2b42791f31ab00b39d488e971b5d3c6017970ed037a43`
 - GPU f16 hash (256²/500 steps): `d1acf26754798c4eeb65fb0b0665cf8e197609caafbed2389bdd2ee6adea6bab`
