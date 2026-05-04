@@ -136,9 +136,9 @@ The "compute-bound" diagnosis was wrong. Roofline math:
 - [x] **R.3** Select best shape: 16×4. Updated `GpuState.wg_x`/`wg_y`.
 
 ## 🔥 Phase S — Subgroup Shuffle Intra-Warp Data Sharing (Expected +10-25%, dual approach)
-- [ ] **S.1** Native path (naga): Check wgpu-native/naga status for `enable subgroups;` acceptance (gap tracked at gfx-rs/wgpu#8202). Likely still blocked.
-- [ ] **S.2** Browser path (Chrome 134+): Chrome 134 shipped `"subgroups"` feature + WGSL `enable subgroups;`. Firefox/Safari not yet. Browser WebGPU supports `subgroupShuffle()`, `subgroupAdd()`, etc. naga limitation is irrelevant for browser target — Dawn compiles WGSL directly.
-- [ ] **S.3** If available (browser or native): Replace shared memory column loads with subgroup shuffle within warps. Eliminates SMEM bank conflicts entirely. Mark `[BLOCKED: naga]` for native, `[READY: Chrome 134+]` for browser.
+- [BLOCKED: wgpu-native/naga rejects `enable subgroups;` (gfx-rs/wgpu#5555, #7471, #8202). Quad ops partially landed (#7683) but full subgroup shuffle/broadcast still not spec-complete. Chrome 134+ works for browser path. Native-only blocked.] **S.1** Native path (naga): Check wgpu-native/naga status for `enable subgroups;` acceptance.
+- [BLOCKED: same] **S.2** Browser path (Chrome 134+): Chrome 134 shipped `"subgroups"` feature + WGSL `enable subgroups;`.
+- [BLOCKED: same] **S.3** If available: Replace shared memory column loads with subgroup shuffle within warps.
 
 ## 🔥 Phase T — Register-Level Output Tiling (Expected +10-20%)
 - [ ] **T.1** Each thread computes 2×1 or 2×2 output cells instead of 1. Keeps u/v intermediates in registers across adjacent computations. Amortizes neighbor loads: 2 cells share 6 of 9 neighbors.

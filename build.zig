@@ -22,11 +22,17 @@ pub fn build(b: *std.Build) void {
     sim_mod.addImport("gray_scott_grid", grid_mod);
 
     // ========================================================================
-    // WASM Build
+    // WASM Builds
     // ========================================================================
     const wasm_target = b.resolveTargetQuery(.{
         .cpu_arch = .wasm32,
         .os_tag = .freestanding,
+    });
+
+    const wgsl_gen_mod = b.createModule(.{
+        .root_source_file = b.path("src/wgsl_gen.zig"),
+        .target = wasm_target,
+        .optimize = optimize,
     });
 
     const wasm_mod = b.createModule(.{
@@ -45,6 +51,22 @@ pub fn build(b: *std.Build) void {
 
     const wasm_step = b.step("wasm", "Build WASM module");
     wasm_step.dependOn(&b.addInstallArtifact(wasm, .{}).step);
+
+    const wasm_shader_mod = b.createModule(.{
+        .root_source_file = b.path("src/wasm_shader.zig"),
+        .target = wasm_target,
+        .optimize = optimize,
+    });
+    wasm_shader_mod.addImport("gray_scott_wgsl", wgsl_gen_mod);
+
+    const wasm_shader = b.addExecutable(.{
+        .name = "gray_scott_shader",
+        .root_module = wasm_shader_mod,
+    });
+    wasm_shader.rdynamic = true;
+
+    const wasm_shader_step = b.step("wasm-shader", "Build WASM WGSL shader export module");
+    wasm_shader_step.dependOn(&b.addInstallArtifact(wasm_shader, .{}).step);
 
     // ========================================================================
     // Native CLI Build
