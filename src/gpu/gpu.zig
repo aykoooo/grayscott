@@ -199,33 +199,16 @@ fn generateWgsl(buf: []u8, w: u32, h: u32, tile_x: u32, tile_y: u32) ![]const u8
         \\        tile_u[hi] = u_in[y_b * WIDTH + x];
         \\        tile_v[hi] = v_in[y_b * WIDTH + x];
         \\    }}
-        \\    workgroupBarrier();
-        \\    let u_c = tile_u[ti];
-        \\    let v_c = tile_v[ti];
-        \\    let u_left   = tile_u[(lid.y + 1u) * STRIDE + (lid.x    )];
-        \\    let u_right  = tile_u[(lid.y + 1u) * STRIDE + (lid.x + 2u)];
-        \\    let u_up     = tile_u[(lid.y    ) * STRIDE + (lid.x + 1u)];
-        \\    let u_down   = tile_u[(lid.y + 2u) * STRIDE + (lid.x + 1u)];
-        \\    let u_ne     = tile_u[(lid.y    ) * STRIDE + (lid.x + 2u)];
-        \\    let u_nw     = tile_u[(lid.y    ) * STRIDE + (lid.x    )];
-        \\    let u_se     = tile_u[(lid.y + 2u) * STRIDE + (lid.x + 2u)];
-        \\    let u_sw     = tile_u[(lid.y + 2u) * STRIDE + (lid.x    )];
-        \\    let lap_u = 0.2 * (u_left + u_right + u_up + u_down)
-        \\            + 0.05 * (u_ne + u_nw + u_se + u_sw)
-        \\            - 1.0 * u_c;
-        \\    let v_left   = tile_v[(lid.y + 1u) * STRIDE + (lid.x    )];
-        \\    let v_right  = tile_v[(lid.y + 1u) * STRIDE + (lid.x + 2u)];
-        \\    let v_up     = tile_v[(lid.y    ) * STRIDE + (lid.x + 1u)];
-        \\    let v_down   = tile_v[(lid.y + 2u) * STRIDE + (lid.x + 1u)];
-        \\    let v_ne     = tile_v[(lid.y    ) * STRIDE + (lid.x + 2u)];
-        \\    let v_nw     = tile_v[(lid.y    ) * STRIDE + (lid.x    )];
-        \\    let v_se     = tile_v[(lid.y + 2u) * STRIDE + (lid.x + 2u)];
-        \\    let v_sw     = tile_v[(lid.y + 2u) * STRIDE + (lid.x    )];
-        \\    let lap_v = 0.2 * (v_left + v_right + v_up + v_down)
-        \\            + 0.05 * (v_ne + v_nw + v_se + v_sw)
-        \\            - 1.0 * v_c;
-        \\    let uvv = u_c * v_c * v_c;
-        \\    let u_next = u_c + params.dt * (params.da * lap_u - uvv + params.feed * (1.0 - u_c));
+\\    workgroupBarrier();
+    \\    let u_c = tile_u[ti]; let v_c = tile_v[ti];
+    \\    let card_u = tile_u[(lid.y+1u)*STRIDE+(lid.x)] + tile_u[(lid.y+1u)*STRIDE+(lid.x+2u)] + tile_u[(lid.y)*STRIDE+(lid.x+1u)] + tile_u[(lid.y+2u)*STRIDE+(lid.x+1u)];
+    \\    let diag_u = tile_u[(lid.y)*STRIDE+(lid.x+2u)] + tile_u[(lid.y)*STRIDE+(lid.x)] + tile_u[(lid.y+2u)*STRIDE+(lid.x+2u)] + tile_u[(lid.y+2u)*STRIDE+(lid.x)];
+    \\    let lap_u = fma(diag_u, 0.05, fma(card_u, 0.2, -u_c));
+    \\    let card_v = tile_v[(lid.y+1u)*STRIDE+(lid.x)] + tile_v[(lid.y+1u)*STRIDE+(lid.x+2u)] + tile_v[(lid.y)*STRIDE+(lid.x+1u)] + tile_v[(lid.y+2u)*STRIDE+(lid.x+1u)];
+    \\    let diag_v = tile_v[(lid.y)*STRIDE+(lid.x+2u)] + tile_v[(lid.y)*STRIDE+(lid.x)] + tile_v[(lid.y+2u)*STRIDE+(lid.x+2u)] + tile_v[(lid.y+2u)*STRIDE+(lid.x)];
+    \\    let lap_v = fma(diag_v, 0.05, fma(card_v, 0.2, -v_c));
+    \\    let uvv = u_c * v_c * v_c;
+    \\    let u_next = u_c + params.dt * (params.da * lap_u - uvv + params.feed * (1.0 - u_c));
         \\    let v_next = v_c + params.dt * (params.db * lap_v + uvv - (params.feed + params.kill) * v_c);
         \\    let out_idx = y * WIDTH + x;
         \\    u_out[out_idx] = clamp(u_next, 0.0, 1.0);
@@ -310,32 +293,15 @@ fn generateWgslPearson(buf: []u8, w: u32, h: u32, tile_x: u32, tile_y: u32) ![]c
         \\        tile_u[hi] = u_in[y_b * WIDTH + x];
         \\        tile_v[hi] = v_in[y_b * WIDTH + x];
         \\    }}
-        \\    workgroupBarrier();
-        \\    let u_c = tile_u[ti];
-        \\    let v_c = tile_v[ti];
-        \\    let u_left   = tile_u[(lid.y + 1u) * STRIDE + (lid.x    )];
-        \\    let u_right  = tile_u[(lid.y + 1u) * STRIDE + (lid.x + 2u)];
-        \\    let u_up     = tile_u[(lid.y    ) * STRIDE + (lid.x + 1u)];
-        \\    let u_down   = tile_u[(lid.y + 2u) * STRIDE + (lid.x + 1u)];
-        \\    let u_ne     = tile_u[(lid.y    ) * STRIDE + (lid.x + 2u)];
-        \\    let u_nw     = tile_u[(lid.y    ) * STRIDE + (lid.x    )];
-        \\    let u_se     = tile_u[(lid.y + 2u) * STRIDE + (lid.x + 2u)];
-        \\    let u_sw     = tile_u[(lid.y + 2u) * STRIDE + (lid.x    )];
-        \\    let lap_u = 0.2 * (u_left + u_right + u_up + u_down)
-        \\            + 0.05 * (u_ne + u_nw + u_se + u_sw)
-        \\            - 1.0 * u_c;
-        \\    let v_left   = tile_v[(lid.y + 1u) * STRIDE + (lid.x    )];
-        \\    let v_right  = tile_v[(lid.y + 1u) * STRIDE + (lid.x + 2u)];
-        \\    let v_up     = tile_v[(lid.y    ) * STRIDE + (lid.x + 1u)];
-        \\    let v_down   = tile_v[(lid.y + 2u) * STRIDE + (lid.x + 1u)];
-        \\    let v_ne     = tile_v[(lid.y    ) * STRIDE + (lid.x + 2u)];
-        \\    let v_nw     = tile_v[(lid.y    ) * STRIDE + (lid.x    )];
-        \\    let v_se     = tile_v[(lid.y + 2u) * STRIDE + (lid.x + 2u)];
-        \\    let v_sw     = tile_v[(lid.y + 2u) * STRIDE + (lid.x    )];
-        \\    let lap_v = 0.2 * (v_left + v_right + v_up + v_down)
-        \\            + 0.05 * (v_ne + v_nw + v_se + v_sw)
-        \\            - 1.0 * v_c;
-        \\    let f = feed_map[y];
+\\    workgroupBarrier();
+    \\    let u_c = tile_u[ti]; let v_c = tile_v[ti];
+    \\    let card_u = tile_u[(lid.y+1u)*STRIDE+(lid.x)] + tile_u[(lid.y+1u)*STRIDE+(lid.x+2u)] + tile_u[(lid.y)*STRIDE+(lid.x+1u)] + tile_u[(lid.y+2u)*STRIDE+(lid.x+1u)];
+    \\    let diag_u = tile_u[(lid.y)*STRIDE+(lid.x+2u)] + tile_u[(lid.y)*STRIDE+(lid.x)] + tile_u[(lid.y+2u)*STRIDE+(lid.x+2u)] + tile_u[(lid.y+2u)*STRIDE+(lid.x)];
+    \\    let lap_u = fma(diag_u, 0.05, fma(card_u, 0.2, -u_c));
+    \\    let card_v = tile_v[(lid.y+1u)*STRIDE+(lid.x)] + tile_v[(lid.y+1u)*STRIDE+(lid.x+2u)] + tile_v[(lid.y)*STRIDE+(lid.x+1u)] + tile_v[(lid.y+2u)*STRIDE+(lid.x+1u)];
+    \\    let diag_v = tile_v[(lid.y)*STRIDE+(lid.x+2u)] + tile_v[(lid.y)*STRIDE+(lid.x)] + tile_v[(lid.y+2u)*STRIDE+(lid.x+2u)] + tile_v[(lid.y+2u)*STRIDE+(lid.x)];
+    \\    let lap_v = fma(diag_v, 0.05, fma(card_v, 0.2, -v_c));
+    \\    let f = feed_map[y];
         \\    let k = kill_map[x];
         \\    let uvv = u_c * v_c * v_c;
         \\    let u_next = u_c + params.dt * (params.da * lap_u - uvv + f * (1.0 - u_c));
@@ -1047,4 +1013,246 @@ pub export fn gs_gpu_free() void {
     if (g.instance != null) c.wgpuInstanceRelease(g.instance);
 
     g = .{};
+}
+
+fn generateWgslInterleaved(buf: []u8, w: u32, h: u32) ![]const u8 {
+    return std.fmt.bufPrint(buf,
+        \\struct Params {{ da: f32, db: f32, dt: f32, feed: f32, kill: f32, }}
+        \\@group(0) @binding(0) var<storage, read> u_in: array<f32>;
+        \\@group(0) @binding(1) var<storage, read> v_in: array<f32>;
+        \\@group(0) @binding(2) var<storage, read_write> u_out: array<f32>;
+        \\@group(0) @binding(3) var<storage, read_write> v_out: array<f32>;
+        \\@group(0) @binding(4) var<uniform> params: Params;
+        \\const WIDTH: u32 = {d}u; const HEIGHT: u32 = {d}u;
+        \\const TX: u32 = 16u; const TY: u32 = 4u; const STRIDE: u32 = 18u;
+        \\var<workgroup> tile_u: array<f32, 108>; var<workgroup> tile_v: array<f32, 108>;
+        \\@compute @workgroup_size(16, 4)
+        \\fn main(@builtin(global_invocation_id) id: vec3<u32>, @builtin(local_invocation_id) lid: vec3<u32>) {{
+        \\    let x = id.x; let y = id.y;
+        \\    if (x >= WIDTH || y >= HEIGHT) {{ return; }}
+        \\    let ti = (lid.y + 1u) * STRIDE + (lid.x + 1u);
+        \\    tile_u[ti] = u_in[y * WIDTH + x]; tile_v[ti] = v_in[y * WIDTH + x];
+        \\    let x_l = select(x - 1u, WIDTH - 1u, x == 0u);
+        \\    let x_r = select(x + 1u, 0u, x + 1u >= WIDTH);
+        \\    let y_t = select(y - 1u, HEIGHT - 1u, y == 0u);
+        \\    let y_b = select(y + 1u, 0u, y + 1u >= HEIGHT);
+        \\    if (lid.x == 0u) {{
+        \\        let hi = (lid.y + 1u) * STRIDE;
+        \\        tile_u[hi] = u_in[y * WIDTH + x_l]; tile_v[hi] = v_in[y * WIDTH + x_l];
+        \\        if (lid.y == 0u) {{ tile_u[0] = u_in[y_t * WIDTH + x_l]; tile_v[0] = v_in[y_t * WIDTH + x_l]; }}
+        \\        if (lid.y == 3u) {{ let ci = 5u * STRIDE; tile_u[ci] = u_in[y_b * WIDTH + x_l]; tile_v[ci] = v_in[y_b * WIDTH + x_l]; }}
+        \\    }}
+        \\    if (lid.x == 15u) {{
+        \\        let hi = (lid.y + 1u) * STRIDE + 17u;
+        \\        tile_u[hi] = u_in[y * WIDTH + x_r]; tile_v[hi] = v_in[y * WIDTH + x_r];
+        \\        if (lid.y == 0u) {{ tile_u[17u] = u_in[y_t * WIDTH + x_r]; tile_v[17u] = v_in[y_t * WIDTH + x_r]; }}
+        \\        if (lid.y == 3u) {{ let ci = 5u * STRIDE + 17u; tile_u[ci] = u_in[y_b * WIDTH + x_r]; tile_v[ci] = v_in[y_b * WIDTH + x_r]; }}
+        \\    }}
+        \\    if (lid.y == 0u) {{ let oh = lid.x + 1u; tile_u[oh] = u_in[y_t * WIDTH + x]; tile_v[oh] = v_in[y_t * WIDTH + x]; }}
+        \\    if (lid.y == 3u) {{ let oh = 5u * STRIDE + (lid.x + 1u); tile_u[oh] = u_in[y_b * WIDTH + x]; tile_v[oh] = v_in[y_b * WIDTH + x]; }}
+        \\    workgroupBarrier();
+        \\    let u_c = tile_u[ti]; let v_c = tile_v[ti];
+        \\    var ca: f32 = tile_u[(lid.y+1u)*STRIDE+(lid.x)]; var cb: f32 = tile_v[(lid.y+1u)*STRIDE+(lid.x)];
+        \\    ca += tile_u[(lid.y+1u)*STRIDE+(lid.x+2u)]; cb += tile_v[(lid.y+1u)*STRIDE+(lid.x+2u)];
+        \\    ca += tile_u[(lid.y)*STRIDE+(lid.x+1u)]; cb += tile_v[(lid.y)*STRIDE+(lid.x+1u)];
+        \\    ca += tile_u[(lid.y+2u)*STRIDE+(lid.x+1u)]; cb += tile_v[(lid.y+2u)*STRIDE+(lid.x+1u)];
+        \\    let card_u = ca; let card_v = cb;
+        \\    var da: f32 = tile_u[(lid.y)*STRIDE+(lid.x+2u)]; var db: f32 = tile_v[(lid.y)*STRIDE+(lid.x+2u)];
+        \\    da += tile_u[(lid.y)*STRIDE+(lid.x)]; db += tile_v[(lid.y)*STRIDE+(lid.x)];
+        \\    da += tile_u[(lid.y+2u)*STRIDE+(lid.x+2u)]; db += tile_v[(lid.y+2u)*STRIDE+(lid.x+2u)];
+        \\    da += tile_u[(lid.y+2u)*STRIDE+(lid.x)]; db += tile_v[(lid.y+2u)*STRIDE+(lid.x)];
+        \\    let diag_u = da; let diag_v = db;
+        \\    let lap_u = fma(diag_u, 0.05, fma(card_u, 0.2, -u_c));
+        \\    let lap_v = fma(diag_v, 0.05, fma(card_v, 0.2, -v_c));
+        \\    let uvv = u_c * v_c * v_c;
+        \\    let u_next = u_c + params.dt * (params.da * lap_u - uvv + params.feed * (1.0 - u_c));
+        \\    let v_next = v_c + params.dt * (params.db * lap_v + uvv - (params.feed + params.kill) * v_c);
+        \\    let out_idx = y * WIDTH + x;
+        \\    u_out[out_idx] = clamp(u_next, 0.0, 1.0);
+        \\    v_out[out_idx] = clamp(v_next, 0.0, 1.0);
+        \\}}
+    , .{ w, h });
+}
+
+fn generateWgslEarlySum(buf: []u8, w: u32, h: u32) ![]const u8 {
+    return std.fmt.bufPrint(buf,
+        \\struct Params {{ da: f32, db: f32, dt: f32, feed: f32, kill: f32, }}
+        \\@group(0) @binding(0) var<storage, read> u_in: array<f32>;
+        \\@group(0) @binding(1) var<storage, read> v_in: array<f32>;
+        \\@group(0) @binding(2) var<storage, read_write> u_out: array<f32>;
+        \\@group(0) @binding(3) var<storage, read_write> v_out: array<f32>;
+        \\@group(0) @binding(4) var<uniform> params: Params;
+        \\const WIDTH: u32 = {d}u; const HEIGHT: u32 = {d}u;
+        \\const TX: u32 = 16u; const TY: u32 = 4u; const STRIDE: u32 = 18u;
+        \\var<workgroup> tile_u: array<f32, 108>; var<workgroup> tile_v: array<f32, 108>;
+        \\@compute @workgroup_size(16, 4)
+        \\fn main(@builtin(global_invocation_id) id: vec3<u32>, @builtin(local_invocation_id) lid: vec3<u32>) {{
+        \\    let x = id.x; let y = id.y;
+        \\    if (x >= WIDTH || y >= HEIGHT) {{ return; }}
+        \\    let ti = (lid.y + 1u) * STRIDE + (lid.x + 1u);
+        \\    tile_u[ti] = u_in[y * WIDTH + x]; tile_v[ti] = v_in[y * WIDTH + x];
+        \\    let x_l = select(x - 1u, WIDTH - 1u, x == 0u);
+        \\    let x_r = select(x + 1u, 0u, x + 1u >= WIDTH);
+        \\    let y_t = select(y - 1u, HEIGHT - 1u, y == 0u);
+        \\    let y_b = select(y + 1u, 0u, y + 1u >= HEIGHT);
+        \\    if (lid.x == 0u) {{
+        \\        let hi = (lid.y + 1u) * STRIDE;
+        \\        tile_u[hi] = u_in[y * WIDTH + x_l]; tile_v[hi] = v_in[y * WIDTH + x_l];
+        \\        if (lid.y == 0u) {{ tile_u[0] = u_in[y_t * WIDTH + x_l]; tile_v[0] = v_in[y_t * WIDTH + x_l]; }}
+        \\        if (lid.y == 3u) {{ let ci = 5u * STRIDE; tile_u[ci] = u_in[y_b * WIDTH + x_l]; tile_v[ci] = v_in[y_b * WIDTH + x_l]; }}
+        \\    }}
+        \\    if (lid.x == 15u) {{
+        \\        let hi = (lid.y + 1u) * STRIDE + 17u;
+        \\        tile_u[hi] = u_in[y * WIDTH + x_r]; tile_v[hi] = v_in[y * WIDTH + x_r];
+        \\        if (lid.y == 0u) {{ tile_u[17u] = u_in[y_t * WIDTH + x_r]; tile_v[17u] = v_in[y_t * WIDTH + x_r]; }}
+        \\        if (lid.y == 3u) {{ let ci = 5u * STRIDE + 17u; tile_u[ci] = u_in[y_b * WIDTH + x_r]; tile_v[ci] = v_in[y_b * WIDTH + x_r]; }}
+        \\    }}
+        \\    if (lid.y == 0u) {{ let oh = lid.x + 1u; tile_u[oh] = u_in[y_t * WIDTH + x]; tile_v[oh] = v_in[y_t * WIDTH + x]; }}
+        \\    if (lid.y == 3u) {{ let oh = 5u * STRIDE + (lid.x + 1u); tile_u[oh] = u_in[y_b * WIDTH + x]; tile_v[oh] = v_in[y_b * WIDTH + x]; }}
+        \\    workgroupBarrier();
+        \\    let u_c = tile_u[ti]; let v_c = tile_v[ti];
+        \\    let card_u = tile_u[(lid.y+1u)*STRIDE+(lid.x)] + tile_u[(lid.y+1u)*STRIDE+(lid.x+2u)] + tile_u[(lid.y)*STRIDE+(lid.x+1u)] + tile_u[(lid.y+2u)*STRIDE+(lid.x+1u)];
+        \\    let card_v = tile_v[(lid.y+1u)*STRIDE+(lid.x)] + tile_v[(lid.y+1u)*STRIDE+(lid.x+2u)] + tile_v[(lid.y)*STRIDE+(lid.x+1u)] + tile_v[(lid.y+2u)*STRIDE+(lid.x+1u)];
+        \\    let lap_u = fma(tile_u[(lid.y)*STRIDE+(lid.x+2u)]+tile_u[(lid.y)*STRIDE+(lid.x)]+tile_u[(lid.y+2u)*STRIDE+(lid.x+2u)]+tile_u[(lid.y+2u)*STRIDE+(lid.x)], 0.05, fma(card_u, 0.2, -u_c));
+        \\    let lap_v = fma(tile_v[(lid.y)*STRIDE+(lid.x+2u)]+tile_v[(lid.y)*STRIDE+(lid.x)]+tile_v[(lid.y+2u)*STRIDE+(lid.x+2u)]+tile_v[(lid.y+2u)*STRIDE+(lid.x)], 0.05, fma(card_v, 0.2, -v_c));
+        \\    let uvv = u_c * v_c * v_c;
+        \\    let u_next = u_c + params.dt * (params.da * lap_u - uvv + params.feed * (1.0 - u_c));
+        \\    let v_next = v_c + params.dt * (params.db * lap_v + uvv - (params.feed + params.kill) * v_c);
+        \\    let out_idx = y * WIDTH + x;
+        \\    u_out[out_idx] = clamp(u_next, 0.0, 1.0);
+        \\    v_out[out_idx] = clamp(v_next, 0.0, 1.0);
+        \\}}
+    , .{ w, h });
+}
+
+pub export fn gs_gpu_init_interleaved(width: u32, height: u32) bool {
+    if (g.initialized) gs_gpu_free();
+    if (width == 0 or height == 0) return false;
+    g.wg_x = 16; g.wg_y = 4; g.width = width; g.height = height;
+    g.instance = c.wgpuCreateInstance(null); if (g.instance == null) return false;
+    g_cb_adapter = null;
+    const ai: c.WGPURequestAdapterCallbackInfo = .{ .mode = c.WGPUCallbackMode_WaitAnyOnly, .callback = adapterCallback, .userdata1 = null, .userdata2 = null };
+    const af = c.wgpuInstanceRequestAdapter(g.instance, null, ai);
+    if (!waitFuture(g.instance, af)) return false;
+    g.adapter = g_cb_adapter; if (g.adapter == null) return false;
+    g.has_f16 = c.wgpuAdapterHasFeature(g.adapter, c.WGPUFeatureName_ShaderF16) != c.WGPU_FALSE;
+    g_cb_device = null;
+    var dp: ?*const c.WGPUDeviceDescriptor = null;
+    var fa: [1]c.WGPUFeatureName = undefined;
+    var dd: c.WGPUDeviceDescriptor = undefined;
+    if (g.has_f16) { fa[0] = c.WGPUFeatureName_ShaderF16; dd = .{ .nextInChain = null, .label = strv("il"), .requiredFeatureCount = 1, .requiredFeatures = &fa, .requiredLimits = null, .defaultQueue = std.mem.zeroes(c.WGPUQueueDescriptor), .deviceLostCallbackInfo = std.mem.zeroes(c.WGPUDeviceLostCallbackInfo), .uncapturedErrorCallbackInfo = std.mem.zeroes(c.WGPUUncapturedErrorCallbackInfo) }; dp = &dd; }
+    const di: c.WGPURequestDeviceCallbackInfo = .{ .mode = c.WGPUCallbackMode_WaitAnyOnly, .callback = deviceCallback, .userdata1 = null, .userdata2 = null };
+    const df = c.wgpuAdapterRequestDevice(g.adapter, dp, di);
+    if (!waitFuture(g.instance, df)) return false;
+    g.device = g_cb_device; if (g.device == null) return false;
+    g.queue = c.wgpuDeviceGetQueue(g.device); if (g.queue == null) return false;
+    var wb: [8192]u8 = undefined;
+    const ws = generateWgslInterleaved(&wb, width, height) catch return false;
+    var ss: c.WGPUShaderSourceWGSL = undefined; ss.chain.next = null; ss.chain.sType = c.WGPUSType_ShaderSourceWGSL; ss.code = strv(ws);
+    const sm: c.WGPUShaderModuleDescriptor = .{ .nextInChain = &ss.chain, .label = cstrv("il") };
+    g.shader_module = c.wgpuDeviceCreateShaderModule(g.device, &sm); if (g.shader_module == null) return false;
+    const gb: u64 = @as(u64, width) * @as(u64, height) * @sizeOf(f32);
+    const su = c.WGPUBufferUsage_Storage | c.WGPUBufferUsage_CopyDst | c.WGPUBufferUsage_CopySrc;
+    g.buf_u0 = makeBuffer(g.device, su, gb, "u0"); g.buf_u1 = makeBuffer(g.device, su, gb, "u1");
+    g.buf_v0 = makeBuffer(g.device, su, gb, "v0"); g.buf_v1 = makeBuffer(g.device, su, gb, "v1");
+    g.buf_params = makeBuffer(g.device, c.WGPUBufferUsage_Uniform | c.WGPUBufferUsage_CopyDst, @sizeOf(ParamsGpu), "p");
+    g.buf_u_readback = makeBuffer(g.device, c.WGPUBufferUsage_MapRead | c.WGPUBufferUsage_CopyDst, gb, "rb");
+    if (g.buf_u0 == null or g.buf_u1 == null or g.buf_v0 == null or g.buf_v1 == null or g.buf_params == null or g.buf_u_readback == null) return false;
+    var iu = std.heap.page_allocator.alloc(f32, width * height) catch return false;
+    defer std.heap.page_allocator.free(iu);
+    var iv = std.heap.page_allocator.alloc(f32, width * height) catch return false;
+    defer std.heap.page_allocator.free(iv);
+    @memset(iu, 1.0); @memset(iv, 0.0);
+    var rng = std.Random.DefaultPrng.init(42); const rd = rng.random();
+    const ns: usize = if (width * height > 10000) 20 else 5; var k: usize = 0;
+    while (k < ns) : (k += 1) {
+        const cx = rd.intRangeLessThan(usize, 5, width-5); const cy = rd.intRangeLessThan(usize, 5, height-5);
+        const sz = rd.intRangeAtMost(usize, 2, 5); const hf = sz / 2;
+        for (if(cy>hf) cy-hf else 0..@min(cy+hf+1,height))|yy|{ for (if(cx>hf) cx-hf else 0..@min(cx+hf+1,width))|xx|{ iu[yy*width+xx]=0.5; iv[yy*width+xx]=1.0; }}
+    }
+    c.wgpuQueueWriteBuffer(g.queue, g.buf_u0, 0, iu.ptr, gb); c.wgpuQueueWriteBuffer(g.queue, g.buf_u1, 0, iu.ptr, gb);
+    c.wgpuQueueWriteBuffer(g.queue, g.buf_v0, 0, iv.ptr, gb); c.wgpuQueueWriteBuffer(g.queue, g.buf_v1, 0, iv.ptr, gb);
+    const ents = [_]c.WGPUBindGroupLayoutEntry{ makeBglEntry(0, c.WGPUBufferBindingType_ReadOnlyStorage), makeBglEntry(1, c.WGPUBufferBindingType_ReadOnlyStorage), makeBglEntry(2, c.WGPUBufferBindingType_Storage), makeBglEntry(3, c.WGPUBufferBindingType_Storage), makeBglEntry(4, c.WGPUBufferBindingType_Uniform) };
+    const bl: c.WGPUBindGroupLayoutDescriptor = .{ .nextInChain = null, .label = cstrv("il"), .entryCount = ents.len, .entries = &ents };
+    g.bind_group_layout = c.wgpuDeviceCreateBindGroupLayout(g.device, &bl); if (g.bind_group_layout == null) return false;
+    const pl: c.WGPUPipelineLayoutDescriptor = .{ .nextInChain = null, .label = cstrv("il"), .bindGroupLayoutCount = 1, .bindGroupLayouts = &g.bind_group_layout, .immediateSize = 0 };
+    g.pipeline_layout = c.wgpuDeviceCreatePipelineLayout(g.device, &pl); if (g.pipeline_layout == null) return false;
+    const co: c.WGPUComputeState = .{ .nextInChain = null, .module = g.shader_module, .entryPoint = cstrv("main"), .constantCount = 0, .constants = null };
+    const cp: c.WGPUComputePipelineDescriptor = .{ .nextInChain = null, .label = cstrv("il"), .layout = g.pipeline_layout, .compute = co };
+    g.pipeline = c.wgpuDeviceCreateComputePipeline(g.device, &cp); if (g.pipeline == null) return false;
+    const wsz = c.WGPU_WHOLE_SIZE;
+    const be = [_]c.WGPUBindGroupEntry{ makeBindGroupEntry(0,g.buf_u0,0,wsz), makeBindGroupEntry(1,g.buf_v0,0,wsz), makeBindGroupEntry(2,g.buf_u1,0,wsz), makeBindGroupEntry(3,g.buf_v1,0,wsz), makeBindGroupEntry(4,g.buf_params,0,wsz) };
+    const bde: c.WGPUBindGroupDescriptor = .{ .nextInChain=null,.label=cstrv("il"),.layout=g.bind_group_layout,.entryCount=be.len,.entries=&be };
+    g.bind_group_even = c.wgpuDeviceCreateBindGroup(g.device, &bde);
+    const bo = [_]c.WGPUBindGroupEntry{ makeBindGroupEntry(0,g.buf_u1,0,wsz), makeBindGroupEntry(1,g.buf_v1,0,wsz), makeBindGroupEntry(2,g.buf_u0,0,wsz), makeBindGroupEntry(3,g.buf_v0,0,wsz), makeBindGroupEntry(4,g.buf_params,0,wsz) };
+    const bdo: c.WGPUBindGroupDescriptor = .{ .nextInChain=null,.label=cstrv("il"),.layout=g.bind_group_layout,.entryCount=bo.len,.entries=&bo };
+    g.bind_group_odd = c.wgpuDeviceCreateBindGroup(g.device, &bdo);
+    if (g.bind_group_even==null or g.bind_group_odd==null) return false;
+    g.current_u=0; g.step_count=0; g.initialized=true; return true;
+}
+
+pub export fn gs_gpu_init_earlysum(width: u32, height: u32) bool {
+    if (g.initialized) gs_gpu_free();
+    if (width == 0 or height == 0) return false;
+    g.wg_x = 16; g.wg_y = 4; g.width = width; g.height = height;
+    g.instance = c.wgpuCreateInstance(null); if (g.instance == null) return false;
+    g_cb_adapter = null;
+    const ai: c.WGPURequestAdapterCallbackInfo = .{ .mode = c.WGPUCallbackMode_WaitAnyOnly, .callback = adapterCallback, .userdata1 = null, .userdata2 = null };
+    const af = c.wgpuInstanceRequestAdapter(g.instance, null, ai);
+    if (!waitFuture(g.instance, af)) return false;
+    g.adapter = g_cb_adapter; if (g.adapter == null) return false;
+    g.has_f16 = c.wgpuAdapterHasFeature(g.adapter, c.WGPUFeatureName_ShaderF16) != c.WGPU_FALSE;
+    g_cb_device = null;
+    var dp: ?*const c.WGPUDeviceDescriptor = null;
+    var fa: [1]c.WGPUFeatureName = undefined;
+    var dd: c.WGPUDeviceDescriptor = undefined;
+    if (g.has_f16) { fa[0] = c.WGPUFeatureName_ShaderF16; dd = .{ .nextInChain = null, .label = strv("es"), .requiredFeatureCount = 1, .requiredFeatures = &fa, .requiredLimits = null, .defaultQueue = std.mem.zeroes(c.WGPUQueueDescriptor), .deviceLostCallbackInfo = std.mem.zeroes(c.WGPUDeviceLostCallbackInfo), .uncapturedErrorCallbackInfo = std.mem.zeroes(c.WGPUUncapturedErrorCallbackInfo) }; dp = &dd; }
+    const di: c.WGPURequestDeviceCallbackInfo = .{ .mode = c.WGPUCallbackMode_WaitAnyOnly, .callback = deviceCallback, .userdata1 = null, .userdata2 = null };
+    const df = c.wgpuAdapterRequestDevice(g.adapter, dp, di);
+    if (!waitFuture(g.instance, df)) return false;
+    g.device = g_cb_device; if (g.device == null) return false;
+    g.queue = c.wgpuDeviceGetQueue(g.device); if (g.queue == null) return false;
+    var wb: [8192]u8 = undefined;
+    const ws = generateWgslEarlySum(&wb, width, height) catch return false;
+    var ss: c.WGPUShaderSourceWGSL = undefined; ss.chain.next = null; ss.chain.sType = c.WGPUSType_ShaderSourceWGSL; ss.code = strv(ws);
+    const sm: c.WGPUShaderModuleDescriptor = .{ .nextInChain = &ss.chain, .label = cstrv("es") };
+    g.shader_module = c.wgpuDeviceCreateShaderModule(g.device, &sm); if (g.shader_module == null) return false;
+    const gb: u64 = @as(u64, width) * @as(u64, height) * @sizeOf(f32);
+    const su = c.WGPUBufferUsage_Storage | c.WGPUBufferUsage_CopyDst | c.WGPUBufferUsage_CopySrc;
+    g.buf_u0 = makeBuffer(g.device, su, gb, "u0"); g.buf_u1 = makeBuffer(g.device, su, gb, "u1");
+    g.buf_v0 = makeBuffer(g.device, su, gb, "v0"); g.buf_v1 = makeBuffer(g.device, su, gb, "v1");
+    g.buf_params = makeBuffer(g.device, c.WGPUBufferUsage_Uniform | c.WGPUBufferUsage_CopyDst, @sizeOf(ParamsGpu), "p");
+    g.buf_u_readback = makeBuffer(g.device, c.WGPUBufferUsage_MapRead | c.WGPUBufferUsage_CopyDst, gb, "rb");
+    if (g.buf_u0 == null or g.buf_u1 == null or g.buf_v0 == null or g.buf_v1 == null or g.buf_params == null or g.buf_u_readback == null) return false;
+    var iu = std.heap.page_allocator.alloc(f32, width * height) catch return false;
+    defer std.heap.page_allocator.free(iu);
+    var iv = std.heap.page_allocator.alloc(f32, width * height) catch return false;
+    defer std.heap.page_allocator.free(iv);
+    @memset(iu, 1.0); @memset(iv, 0.0);
+    var rng = std.Random.DefaultPrng.init(42); const rd = rng.random();
+    const ns: usize = if (width * height > 10000) 20 else 5; var k: usize = 0;
+    while (k < ns) : (k += 1) {
+        const cx = rd.intRangeLessThan(usize, 5, width-5); const cy = rd.intRangeLessThan(usize, 5, height-5);
+        const sz = rd.intRangeAtMost(usize, 2, 5); const hf = sz / 2;
+        for (if(cy>hf) cy-hf else 0..@min(cy+hf+1,height))|yy|{ for (if(cx>hf) cx-hf else 0..@min(cx+hf+1,width))|xx|{ iu[yy*width+xx]=0.5; iv[yy*width+xx]=1.0; }}
+    }
+    c.wgpuQueueWriteBuffer(g.queue, g.buf_u0, 0, iu.ptr, gb); c.wgpuQueueWriteBuffer(g.queue, g.buf_u1, 0, iu.ptr, gb);
+    c.wgpuQueueWriteBuffer(g.queue, g.buf_v0, 0, iv.ptr, gb); c.wgpuQueueWriteBuffer(g.queue, g.buf_v1, 0, iv.ptr, gb);
+    const ents = [_]c.WGPUBindGroupLayoutEntry{ makeBglEntry(0, c.WGPUBufferBindingType_ReadOnlyStorage), makeBglEntry(1, c.WGPUBufferBindingType_ReadOnlyStorage), makeBglEntry(2, c.WGPUBufferBindingType_Storage), makeBglEntry(3, c.WGPUBufferBindingType_Storage), makeBglEntry(4, c.WGPUBufferBindingType_Uniform) };
+    const bl: c.WGPUBindGroupLayoutDescriptor = .{ .nextInChain = null, .label = cstrv("es"), .entryCount = ents.len, .entries = &ents };
+    g.bind_group_layout = c.wgpuDeviceCreateBindGroupLayout(g.device, &bl); if (g.bind_group_layout == null) return false;
+    const pl: c.WGPUPipelineLayoutDescriptor = .{ .nextInChain = null, .label = cstrv("es"), .bindGroupLayoutCount = 1, .bindGroupLayouts = &g.bind_group_layout, .immediateSize = 0 };
+    g.pipeline_layout = c.wgpuDeviceCreatePipelineLayout(g.device, &pl); if (g.pipeline_layout == null) return false;
+    const co: c.WGPUComputeState = .{ .nextInChain = null, .module = g.shader_module, .entryPoint = cstrv("main"), .constantCount = 0, .constants = null };
+    const cp: c.WGPUComputePipelineDescriptor = .{ .nextInChain = null, .label = cstrv("es"), .layout = g.pipeline_layout, .compute = co };
+    g.pipeline = c.wgpuDeviceCreateComputePipeline(g.device, &cp); if (g.pipeline == null) return false;
+    const wsz = c.WGPU_WHOLE_SIZE;
+    const be = [_]c.WGPUBindGroupEntry{ makeBindGroupEntry(0,g.buf_u0,0,wsz), makeBindGroupEntry(1,g.buf_v0,0,wsz), makeBindGroupEntry(2,g.buf_u1,0,wsz), makeBindGroupEntry(3,g.buf_v1,0,wsz), makeBindGroupEntry(4,g.buf_params,0,wsz) };
+    const bde: c.WGPUBindGroupDescriptor = .{ .nextInChain=null,.label=cstrv("es"),.layout=g.bind_group_layout,.entryCount=be.len,.entries=&be };
+    g.bind_group_even = c.wgpuDeviceCreateBindGroup(g.device, &bde);
+    const bo = [_]c.WGPUBindGroupEntry{ makeBindGroupEntry(0,g.buf_u1,0,wsz), makeBindGroupEntry(1,g.buf_v1,0,wsz), makeBindGroupEntry(2,g.buf_u0,0,wsz), makeBindGroupEntry(3,g.buf_v0,0,wsz), makeBindGroupEntry(4,g.buf_params,0,wsz) };
+    const bdo: c.WGPUBindGroupDescriptor = .{ .nextInChain=null,.label=cstrv("es"),.layout=g.bind_group_layout,.entryCount=bo.len,.entries=&bo };
+    g.bind_group_odd = c.wgpuDeviceCreateBindGroup(g.device, &bdo);
+    if (g.bind_group_even==null or g.bind_group_odd==null) return false;
+    g.current_u=0; g.step_count=0; g.initialized=true; return true;
 }

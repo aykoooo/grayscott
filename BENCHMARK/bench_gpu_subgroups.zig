@@ -19,15 +19,12 @@ pub fn main() !void {
     const feed: f32 = 0.0545;
     const kill: f32 = 0.0620;
 
-    // Initialize GPU
-    if (!gpu.gs_gpu_init(w, h)) {
-        std.debug.print("GPU init failed\n", .{});
+    // Initialize GPU with subgroup support
+    if (!gpu.gs_gpu_init_subgroups(w, h)) {
+        std.debug.print("GPU subgroup init failed\n", .{});
         return error.GpuInitFailed;
     }
     defer gpu.gs_gpu_free();
-
-    // Press F12 in RenderDoc NOW to capture the dispatch
-    std.Thread.sleep(10 * std.time.ns_per_s);
 
     var timer = try std.time.Timer.start();
     gpu.gs_gpu_steps(da, db, dt, feed, kill, steps);

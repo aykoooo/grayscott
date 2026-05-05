@@ -5,14 +5,24 @@ Constraint: dynamic resolution & params — nothing hardcoded.
 Integration: pre-compiled gray_scott_shader.wasm loaded by nabla-type-lite.
 
 ## Correctness
-- Hash gate: e16ed0e3c29cc50b5fa2b42791f31ab00b39d488e971b5d3c6017970ed037a43 (periodic, 256²/500)
+- Hash gate (current, FMA-enabled): `e16ed0e3c29cc50b5fa2b42791f31ab00b39d488e971b5d3c6017970ed037a43` (periodic, 256²/500)
+- Legacy non-FMA hash: lost (overwritten before git commit). FMA baseline established May 5 2026.
+- Pearson FMA hash: TBD after bench-map-pearson run
 - Source of truth files (NEVER modify): src/simulation.zig, src/grid.zig, test/
 - Editable: src/wgsl_gen.zig, src/wasm_shader.zig, src/gpu/gpu.zig, build.zig, BENCHMARK/bench_gpu.zig
 
 ## Current State
-- Best: **2.35B cells/sec** (native, RTX 4060, 16×4 tiling + command buffer batching)
-- Browser baseline: same shader, unknown throughput (not yet measured in-browser)
+- Best native: **~2.3B cells/sec** (peak session, 16×4 tiling + command buffer batching + FMA)
+- Typical observed: 750M–1.5B range depending on GPU power/thermal state
+- All shader paths now use FMA laplacian (standard, Pearson, FMA-explicit, WASM standard, WASM Pearson)
+- Browser baseline: same shader via WASM, unknown throughput
 - WASM export: gray_scott_shader.wasm ships generateWgsl() → returns {ptr, len}
+
+### Bottleneck Verdict (confirmed 2026-05-05)
+- **SMEM latency-bound**, not ALU or bandwidth bound
+- FMA restructuring alone gives +44% (compiler wasn't auto-contracting)
+- 5-point stencil matches FMA throughput despite doing less math → confirms SMEM read cost dominates
+- Next target: instruction scheduling to hide SMEM latency without reducing reads
 
 ---
 
@@ -27,9 +37,12 @@ can validate subgroup-dependent shader variants (Phases 2-4).
   - `vendor/wgpu-native/lib/wgpu_native.dll`
   - `vendor/wgpu-native/include/webgpu/` headers
   - Verify: `WGPUFeatureName_Subgroups` exists.
-- [BLOCKED: depends on 0.1] **0.2** Build bench-gpu-subgroups target and run `zig build bench-gpu-subgroups`.
-  Must NOT produce "not yet implemented in Naga" error.
-- [BLOCKED: depends on 0.1] **0.3** If v30+ still blocked: research Dawn direct integration (node.js/addon or deno).
+- [TESTED/BLOCKED: 2026-05-04] **0.2** Native subgroup shader compiles and runs via WGPUNativeFeature_Subgroup (0x00030021) enum-cast bypass. WGSL without `enable subgroups;` compiles successfully. However:
+  - Hash MISMATCH (53345fe20... vs baseline 20131f4d9a86...) — subgroup shuffles change float evaluation order
+  - 39% SLOWER than baseline (3.97B vs 6.48B cells/sec at 256²) due to reduced TG (8×4=32 vs 16×4=64 threads)
+  - NVIDIA subgroup_size=32 → max safe TG is 8×4 (=32 threads), limiting workgroup parallelism
+  - Code preserved under opt-in `zig build bench-gpu-subgroups` target for future testing
+- [BLOCKED] **0.3** If v30+ still blocked: research Dawn direct integration (node.js/addon or deno).
   Document alternative in RESEARCH_NOTES.md.
 
 ### Gate
@@ -330,3 +343,50 @@ git rebase -i HEAD~N          # N = number of commits for one phase
 | Naga fixed + all phases succeed | ~2–4 hours (6-8 loop iterations) |
 | Naga stays blocked | ~30 min (only Phase 3.1 + 5 runs) |
 | Naga fixed but some phases stall | ~2 hours (some blocked, rest done) |
+
+---
+
+## Phase 6: Instruction Scheduling & Early-Sum Baseline
+
+### Tasks
+- [x] **6.1** Create `generateWgslEarlySum()` variant — card_U→card_V before diagonals.
+- [x] **6.2** Same-process benchmark: `zig build bench-phase-b` shows +10-17% over baseline.
+- [ ] **6.3** Apply early-sum ordering to default `generateWgsl` in gpu.zig.
+- [ ] **6.4** Update hash gate. Expected: `61720aab...` becomes new sacred hash.
+- [ ] **6.5** Verify: `zig build test`, `zig build bench-gpu` with new hash.
+
+---
+
+## Phase 7: Workgroup Shape Sweep v2
+
+### Tasks
+- [ ] **7.1** Create parametric `generateWgslShape(buf, w, h, tx, ty)` — any tile size.
+- [ ] **7.2** Add init functions for 8×8, 16×8, 4×16 shapes.
+- [ ] **7.3** Create same-process benchmark sweeping all shapes vs 16×4 baseline.
+- [ ] **7.4** Pick best shape per resolution bracket (128², 256², 512², 1024²).
+
+---
+
+## Phase 8: vec2 SMEM Packing Retry
+
+### Tasks
+- [ ] **8.1** Create `generateWgslVec2()` — single `tile_uv: array<vec2<f32>>` instead of separate tile_u/tile_v.
+- [ ] **8.2** Benchmark vs scalar SMEM baseline. Target: >5% improvement.
+
+---
+
+## Phase 9: ILP Maximization
+
+### Tasks
+- [ ] **9.1** Fuse laplacian coefficients into single fma trees.
+- [ ] **9.2** Separate U and V computation into truly independent chains.
+- [ ] **9.3** Benchmark. Target: >3% improvement.
+
+---
+
+## Phase 10: Temporal Blocking Without Subgroups
+
+### Tasks
+- [ ] **10.1** Two-step kernel with dual SMEM tiles (expanded halo).
+- [ ] **10.2** Handle odd step counts.
+- [ ] **10.3** Benchmark at 1024² where bandwidth matters most.

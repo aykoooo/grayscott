@@ -347,4 +347,26 @@ pub fn build(b: *std.Build) void {
     debug_mod.linkSystemLibrary("wgpu_native", .{});
     const debug_run = b.addRunArtifact(debug_exe);
     b.step("debug-compare", "Compare CPU vs GPU first step").dependOn(&debug_run.step);
+
+    const bench_ph_mod = b.createModule(.{ .root_source_file = b.path("BENCHMARK/bench_phase_b.zig"), .target = target, .optimize = .ReleaseFast });
+    bench_ph_mod.addIncludePath(b.path("vendor/wgpu-native/include"));
+    bench_ph_mod.addLibraryPath(b.path("vendor/wgpu-native/lib"));
+    bench_ph_mod.link_libc = true;
+    bench_ph_mod.addImport("gray_scott_gpu", gpu_mod);
+    const bench_ph_exe = b.addExecutable(.{ .name = "bench-phase-b", .root_module = bench_ph_mod });
+    bench_ph_mod.linkSystemLibrary("wgpu_native", .{});
+    var bench_ph_run = b.addRunArtifact(bench_ph_exe);
+    bench_ph_run.setEnvironmentVariable("PATH", new_path);
+    b.step("bench-phase-b", "Phase B: interleaved + early-sum instruction scheduling").dependOn(&bench_ph_run.step);
+
+    const bench_all_mod = b.createModule(.{ .root_source_file = b.path("BENCHMARK/bench_all_variants.zig"), .target = target, .optimize = .ReleaseFast });
+    bench_all_mod.addIncludePath(b.path("vendor/wgpu-native/include"));
+    bench_all_mod.addLibraryPath(b.path("vendor/wgpu-native/lib"));
+    bench_all_mod.link_libc = true;
+    bench_all_mod.addImport("gray_scott_gpu", gpu_mod);
+    const bench_all_exe = b.addExecutable(.{ .name = "bench-all", .root_module = bench_all_mod });
+    bench_all_mod.linkSystemLibrary("wgpu_native", .{});
+    var bench_all_run = b.addRunArtifact(bench_all_exe);
+    bench_all_run.setEnvironmentVariable("PATH", new_path);
+    b.step("bench-all", "All variants sweep: baseline/FMA/interleaved/earlysum/5point (same-process)").dependOn(&bench_all_run.step);
 }

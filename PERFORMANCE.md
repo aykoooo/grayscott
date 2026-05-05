@@ -2,6 +2,43 @@
 
 Persistent benchmark tracker. This file survives crashes and restarts.
 
+## Phase A: FMA Baseline Cleanup (2026-05-05)
+
+| Date | Technique | Cells/sec | Improvement | Status |
+|---|---|---|---|---|
+| 2026-05-05 | FMA laplacian applied to all generators (standard, Pearson, WASM) | ~850M–2.3B (session-dependent) | +44% (confirmed via same-session FMA vs non-FMA test) | ✅ Kept — FMA is now baseline |
+| 2026-05-05 | Hash gate updated — `e16ed0e3...` = FMA hash, legacy non-FMA hash lost | — | — | ✅ Documented |
+
+**Discovery:** Wgpu-native v29 compiles WGSL `fma()` calls. Session variance extreme (753M–2,302M). Same-process comparisons only.
+
+## Phase B: Instruction Scheduling (2026-05-05)
+
+Same-process benchmark at 256²/500 on RTX 4060.
+
+| Variant | Cells/sec | Delta vs Baseline | Hash |
+|---|---|---|---|
+| **Baseline** (FMA, card_U→diag_U→card_V→diag_V order) | 1,691M | — | `e16ed0e3...` |
+| **Interleaved** (`var` accumulators, strict U/V alternation) | 1,528M | **-9.6%** | `61720aab...` |
+| **Early-sum** (card_U→card_V first, then inline diagonals with fma) | 1,857M | **+9.8%** | `61720aab...` |
+
+Second verification run (higher GPU power state):
+| **Baseline** | 2,209M | — |
+| **Early-sum** | 2,579M | **+16.7%** |
+
+### Key Findings
+
+**1. `var` accumulator overhead kills interleaving.** Explicit `var ca += ...` pattern adds instruction overhead that outweighs any SMEM pipelining benefit. Stick to `let` single-expression accumulations.
+
+**2. Reordering card_U→card_V before diagonals helps.** Computing both cardinal sums back-to-back interleaves tile_u/tile_v SMEM reads without mutable state. The compiler can schedule these independent accesses in parallel.
+
+**3. Inline diagonal sums change FP evaluation order.** Early-sum computes diags inside `fma()` args instead of pre-computing into `let` variables. This changes hash from `e16ed0e3...` to `61720aab...`.
+
+### Path forward
+
+- Apply early-sum ordering to default `generateWgsl` (make it permanent)
+- Test workgroup shape sweep with early-sum scheduling (Phase C)
+- vec2 SMEM packing may compound with interleaving (Phase D)
+
 ## Baseline (restored wgpu-native v29)
 
 | Date | Technique | Cells/sec | Improvement | Status |
