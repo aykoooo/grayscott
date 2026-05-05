@@ -214,18 +214,18 @@ Recommended strategy: **Do both**. Phase U first (fastest path to nabla-type-lit
 # Active Phases (from NABLA_PLAN.md — 2026-05-05)
 
 ## Phase 6: Instruction Scheduling & Early-Sum Baseline
-- [ ] **6.3** Apply early-sum ordering to default generateWgsl
-- [ ] **6.4** Update hash gate (expected: 61720aab...)
-- [ ] **6.5** Verify tests + bench
+- [x] **6.3** Apply early-sum ordering to default generateWgsl ✓
+- [x] **6.4** Update hash gate. Hash unchanged (e16ed0e3...), no gate change needed ✓
+- [x] **6.5** Verify tests + bench ✓
 
 ## Phase 7: Workgroup Shape Sweep v2
-- [ ] **7.1–7.5** Parametric generator, init fns, benchmark sweep
+- [x] **7.1–7.5** Parametric generator, init fns, benchmark sweep ✓
 
 ## Phase 8: vec2 SMEM Packing Retry
-- [ ] **8.1–8.4** Single tile_uv array, benchmark vs scalar
+- [x] **8.1–8.4** Single tile_uv array, benchmark vs scalar ✓
 
 ## Phase 9: ILP Maximization
-- [ ] **9.1–9.3** Fused coefficients, independent U/V chains
+- [x] **9.1–9.3** Fused coefficients, independent U/V chains ✓
 
 ## Phase 10: Temporal Blocking Without Subgroups
-- [ ] **10.1–10.4** Two-step kernel with dual SMEM tiles
+- [BLOCKED] **10.1–10.4** Two-step kernel with dual SMEM tiles

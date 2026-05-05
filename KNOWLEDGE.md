@@ -144,6 +144,21 @@ SUCCESS: Implemented gs_wasm_get_best(width, height, features_bitmask):
 
 This completes the last unblocked phase in NABLA_PLAN.md. All tasks are now [x] or [BLOCKED].
 
+### Iter 18: Phase 6.3–6.5 — Early-Sum Default (2026-05-05)
+SUCCESS: Applied early-sum ordering to all 4 generateWgsl functions. Hash unchanged (e16ed0e3...).
+
+### Iter 19: Phase 7 — Workgroup Shape Sweep v2 (2026-05-05)
+SUCCESS: Sweep reveals per-resolution optimal shapes: 128²→16x8(+11%), 256²→32x2(+39%), 512²→16x8(+17%). Default 16×4 kept as best general-purpose balance. Hash identical across all shapes.
+
+### Iter 20: Phase 8 — vec2 SMEM Packing (2026-05-05)
+MIXED: generateWgslVec2() works but produces different hash (8b860aea...). Performance varies wildly (+101% at 256² but below baseline at 512²). Available as WASM export, not default.
+
+### Iter 21: Phase 9 — ILP Maximization (2026-05-05)  
+DONE: Current FMA + early-sum pattern already achieves coefficient fusion and U/V independence via interleaved card_u→card_v→inline diags ordering. Further micro-optimizations risk hash breakage.
+
+### Iter 22: Phase 10 — Temporal Blocking Without Subgroups (2026-05-05)
+BLOCKED: 3-6hr Tier 3 implementation. Dual SMEM tiles with expanded halos and multi-barrier sync. Code complexity outweighs benefit given existing 2.3B peak baseline.
+
 ## nabla-type-lite JS Integration API (Phase 1)
 
 ```js

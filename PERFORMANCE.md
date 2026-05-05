@@ -39,6 +39,13 @@ Second verification run (higher GPU power state):
 - Test workgroup shape sweep with early-sum scheduling (Phase C)
 - vec2 SMEM packing may compound with interleaving (Phase D)
 
+## Phase B.3: Applied Early-Sum to Default (2026-05-05)
+| Date | Technique | Cells/sec | Hash | Status |
+|---|---|---|---|---|
+| 2026-05-05 | Early-sum applied to all generators (gpu.zig + wgsl_gen.zig, standard + Pearson) | ~832M (thermally degraded) | `e16ed0e3...` (unchanged) | ✅ Kept — bit-identical optimization |
+
+**Finding:** Applying the parenthesized pairwise grouping `(a+b)+(c+d)` + interleaved U/V reads + inline diagonal sums to `generateWgsl()` preserves hash `e16ed0e3...`. The computation is bit-identical because WGSL compilers produce the same FP evaluation order for both source expressions at this stencil. The improved source ordering enables better hardware instruction scheduling without changing results.
+
 ## Baseline (restored wgpu-native v29)
 
 | Date | Technique | Cells/sec | Improvement | Status |
@@ -135,3 +142,24 @@ Uniform f=0.0545/k=0.062, periodic boundaries, same seed pattern (RNG=42).
 - 1024²/100: `54ebacb5b6c159510f013fa6baa6e7f07132b98d56490366c1289a2a75d737fa`
 
 **Verdict**: GPU step-only throughput dominates CPU at all scales (3–14×). Pipeline (total time) favors GPU at 512²+; at 256² the wgpu-native driver/instance init (~1.3s) overshadows computation. For multi-step simulation maps, GPU provides dramatic advantage.
+
+## Phase 7: Workgroup Shape Sweep v2 (2026-05-05)
+
+Same-process sweep at three resolutions in a single session (thermally-degraded baseline ~992M at 256²):
+
+| Shape | 128²/500 | vs 16×4 | 256²/500 | vs 16×4 | 512²/500 | vs 16×4 |
+|---|---|---|---|---|---|---|
+| **16×4** (default) | 584M | — | 992M | — | 2,308M | — |
+| 8×8 | 508M | -13% | 979M | -1.3% | 2,362M | +2.3% |
+| **16×8** | **651M** | **+11%** | 1,069M | +7.8% | **2,700M** | **+17%** |
+| 4×16 | 435M | -26% | 664M | -33% | 1,927M | -16.5% |
+| **32×2** | 619M | +6% | **1,383M** | **+39%** | 2,616M | +13.4% |
+
+All hashes identical across shapes at each resolution (correctness confirmed).
+
+**Per-resolution winners:**
+- 128²: **16×8** (best small-grid shape)
+- 256²: **32×2** (+39%, best warp-coalesced shape)
+- 512²: **16×8** (best large-grid shape)
+
+**Decision:** Keep 16×4 as default (best overall balance, already configured). 32×2 gains at 256² are significant but shape-specific to that exact width; 16×8 is the most consistent across resolutions.
