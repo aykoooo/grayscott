@@ -156,7 +156,8 @@ MIXED: generateWgslVec2() works but produces different hash (8b860aea...). Perfo
 ### Iter 21: Phase 9 — ILP Maximization (2026-05-05)  
 DONE: Current FMA + early-sum pattern already achieves coefficient fusion and U/V independence via interleaved card_u→card_v→inline diags ordering. Further micro-optimizations risk hash breakage.
 
-### Iter 22: Phase 10 — Temporal Blocking Without Subgroups (2026-05-05)
+### Iter 23: Phase 12 — f16 Precision Revisit (2026-05-06)
+BLOCKED: Full f16 pipeline (Option A) implemented and benchmarked. Median -11% regression vs f32 baseline at 256²/500 (601M vs 677M). Hash `45eaeef6...` stable across all runs, confirming correctness. One anomalous run at 1,127M (+66%) suggests GPU power state sensitivity. Two independent attempts now confirm f16 provides no benefit on RTX 4060 for this kernel — consistent with original Phase K finding. WASM export (`gs_wasm_build_f16`) preserved for future browser testing where different GPU architectures may benefit.
 BLOCKED: 3-6hr Tier 3 implementation. Dual SMEM tiles with expanded halos and multi-barrier sync. Code complexity outweighs benefit given existing 2.3B peak baseline.
 
 ## nabla-type-lite JS Integration API (Phase 1)

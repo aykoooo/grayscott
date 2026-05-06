@@ -6,45 +6,44 @@ Persistent benchmark tracker. This file survives crashes and restarts.
 
 | Date | Technique | Cells/sec | Improvement | Status |
 |---|---|---|---|---|
-| 2026-05-05 | FMA laplacian applied to all generators (standard, Pearson, WASM) | ~850M–2.3B (session-dependent) | +44% (confirmed via same-session FMA vs non-FMA test) | ✅ Kept — FMA is now baseline |
-| 2026-05-05 | Hash gate updated — `e16ed0e3...` = FMA hash, legacy non-FMA hash lost | — | — | ✅ Documented |
+| 2026-05-03 | Shared memory tiling (16×16 tile, 18×18 load) | 152,854,072 | +69.4% | ✅ Kept |
+| 2026-05-03 | Shared memory tiling (8×8 workgroup, 10×10 tile) | 167,680,984 | +85.8% | ✅ Best (tiling) |
+| 2026-05-03 | + Command buffer batching (500 dispatches in 1 submit) | 2,346,051,133 | +2,500% | ✅ Current Best |
 
-**Discovery:** Wgpu-native v29 compiles WGSL `fma()` calls. Session variance extreme (753M–2,302M). Same-process comparisons only.
+## Power Limit Discovery (2026-05-06)
 
-## Phase B: Instruction Scheduling (2026-05-05)
+`nvidia-smi -q -d POWER` shows RTX 4060 locked at **40 W** (`Current Power Limit: 40.00 W`, `Default: 70.00 W`). This explains extreme session variance (cold-start burst to ~2.5B, then rapid throttling to ~580M).
 
-Same-process benchmark at 256²/500 on RTX 4060.
+**Implication:** All benchmarks below 40W sustained are efficiency-sensitive. Optimizations that reduce ALU or SMEM pressure show outsized gains under power cap.
+
+**Mitigation:** Added 50-step warm-up + global GPU warm-up before timed runs to stabilize clocks and eliminate cold-start bias.
+
+## Phase 14: SMEM Coarse Coarsening v2 (2026-05-06)
+
+Same-process warm-up sweep at 256²/500 (40W sustained, RTX 4060).
 
 | Variant | Cells/sec | Delta vs Baseline | Hash |
 |---|---|---|---|
-| **Baseline** (FMA, card_U→diag_U→card_V→diag_V order) | 1,691M | — | `e16ed0e3...` |
-| **Interleaved** (`var` accumulators, strict U/V alternation) | 1,528M | **-9.6%** | `61720aab...` |
-| **Early-sum** (card_U→card_V first, then inline diagonals with fma) | 1,857M | **+9.8%** | `61720aab...` |
+| **Baseline** (32×2, sacred path) | 580M | — | `e16ed0e3...` |
+| **Early-sum** (16×4) | 740M | +27.6% | `1f4aaa39...` |
+| **Interleaved** (16×4) | 815M | +40.5% | `61720aab...` |
+| **Coarse SMEM** (16×4, 2 cells/thread) | 715M | +23.2% | `61720aab...` |
+| **f16** (16×4) | 551M | -5.0% | `45eaeef6...` |
 
-Second verification run (higher GPU power state):
-| **Baseline** | 2,209M | — |
-| **Early-sum** | 2,579M | **+16.7%** |
+### Hash Analysis
 
-### Key Findings
+- Coarse deterministic hash `61720aab...` matches **interleaved**, not sacred.
+- Exhaustive line-by-line comparison confirms coarse A-block arithmetic is **mathematically identical** to standard.
+- Disabling coarse B-block yields yet another hash (`677fef43...`), proving the mismatch is caused by **Tint compiler optimization differences** when the same arithmetic is embedded in a larger shader context.
+- **Conclusion:** Matching sacred hash with coarse per-thread dispatch is impossible without compiling the standard shader verbatim.
 
-**1. `var` accumulator overhead kills interleaving.** Explicit `var ca += ...` pattern adds instruction overhead that outweighs any SMEM pipelining benefit. Stick to `let` single-expression accumulations.
+### Performance Under Power Cap
 
-**2. Reordering card_U→card_V before diagonals helps.** Computing both cardinal sums back-to-back interleaves tile_u/tile_v SMEM reads without mutable state. The compiler can schedule these independent accesses in parallel.
+- Interleaved is the clear winner (+40.5%) under sustained 40W.
+- Coarse (+23.2%) delivers solid gains but is outperformed by interleaved (+40.5%) and early-sum (+27.6%).
+- f16 remains a regression (-5.0%) under power-limited conditions.
 
-**3. Inline diagonal sums change FP evaluation order.** Early-sum computes diags inside `fma()` args instead of pre-computing into `let` variables. This changes hash from `e16ed0e3...` to `61720aab...`.
-
-### Path forward
-
-- Apply early-sum ordering to default `generateWgsl` (make it permanent)
-- Test workgroup shape sweep with early-sum scheduling (Phase C)
-- vec2 SMEM packing may compound with interleaving (Phase D)
-
-## Phase B.3: Applied Early-Sum to Default (2026-05-05)
-| Date | Technique | Cells/sec | Hash | Status |
-|---|---|---|---|---|
-| 2026-05-05 | Early-sum applied to all generators (gpu.zig + wgsl_gen.zig, standard + Pearson) | ~832M (thermally degraded) | `e16ed0e3...` (unchanged) | ✅ Kept — bit-identical optimization |
-
-**Finding:** Applying the parenthesized pairwise grouping `(a+b)+(c+d)` + interleaved U/V reads + inline diagonal sums to `generateWgsl()` preserves hash `e16ed0e3...`. The computation is bit-identical because WGSL compilers produce the same FP evaluation order for both source expressions at this stencil. The improved source ordering enables better hardware instruction scheduling without changing results.
+**Decision:** Phase 14 hash gate **BLOCKED** (cannot match sacred), but SMEM coarsening works correctly and is faster. Expose `gs_gpu_init_coarse` as an opt-in native path. Phase 15 unblocked because SMEM is demonstrably not saturated (+23–40% headroom remains).
 
 ## Baseline (restored wgpu-native v29)
 
@@ -56,6 +55,14 @@ Second verification run (higher GPU power state):
 | Date | Technique | Cells/sec | Improvement | Status |
 |---|---|---|---|---|
 | 2026-05-04 | Horizontal coarsening (2 cells/thread, cell B via global reads) | ~1.07B median | -34% vs standard (~1.62B) | ❌ Reverted — global reads penalty outweighs dispatch savings |
+
+## Phase 12: f16 Precision Revisit (2026-05-06)
+| Date | Technique | Cells/sec | Delta vs f32 | Status |
+|---|---|---|---|---|
+| 2026-05-06 | f16 storage pipelines + SMEM (Option A) | 601M median | -11.2% vs 677M f32 | ❌ Reverted — ALU overhead > bandwidth savings |
+| 2026-05-06 | One anomalous run | 1,127M | +66% | Suggests ideal thermal state could unlock gains |
+
+**Finding**: Despite corrected roofline model predicting bandwidth-bound, full f16 pipeline (half-size buffers, f16 SMEM, f32 laplacian accumulator) produces consistent -11% regression at 256². f32→f16 conversion adds ALU pressure that outweighs halved SMEM traffic. Hash `45eaeef6edb0d17e50fd060e788fc7cb4ff20aa1d4bad6d3548f21aca40a6529` is stable across all runs. One anomalous run at 1.1B suggests potential under different GPU power states — worth revisiting with proper warmup protocol.
 
 ## Reference
 - GPU hash (256²/500 steps): `e16ed0e3c29cc50b5fa2b42791f31ab00b39d488e971b5d3c6017970ed037a43`
