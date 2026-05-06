@@ -1,3 +1,4 @@
+const std = @import("std");
 const wgsl = @import("gray_scott_wgsl");
 
 pub const ShaderMeta = extern struct {
@@ -29,6 +30,7 @@ const CANDIDATE_TILES = [_][2]u32{
 pub const VariantTag = enum(u32) {
     standard = 0,
     subgroups = 1,
+    f16 = 2,
     pearson = 4,
 };
 
@@ -47,6 +49,11 @@ fn buildWgslSubgroups(width: u32, height: u32, tile_x: u32, tile_y: u32) BufResu
     return .{ .ptr = &g_buf, .len = @intCast(result.len) };
 }
 
+fn buildWgslF16(width: u32, height: u32, tile_x: u32, tile_y: u32) BufResult {
+    const result = wgsl.generateWgslF16(&g_buf, width, height, tile_x, tile_y) catch return .{ .ptr = &g_buf, .len = 0 };
+    return .{ .ptr = &g_buf, .len = @intCast(result.len) };
+}
+
 export fn gs_wasm_build_periodic(width: u32, height: u32, tile_x: u32, tile_y: u32) BufResult {
     return buildWgsl(width, height, tile_x, tile_y);
 }
@@ -62,6 +69,11 @@ export fn gs_wasm_build_subgroups(width: u32, height: u32, tile_x: u32, tile_y: 
 
 export fn gs_wasm_build_vec2(width: u32, height: u32, tile_x: u32, tile_y: u32) BufResult {
     const result = wgsl.generateWgslVec2(&g_buf, width, height, tile_x, tile_y) catch return .{ .ptr = &g_buf, .len = 0 };
+    return .{ .ptr = &g_buf, .len = @intCast(result.len) };
+}
+
+export fn gs_wasm_build_f16(width: u32, height: u32, tile_x: u32, tile_y: u32) BufResult {
+    const result = wgsl.generateWgslF16(&g_buf, width, height, tile_x, tile_y) catch return .{ .ptr = &g_buf, .len = 0 };
     return .{ .ptr = &g_buf, .len = @intCast(result.len) };
 }
 
@@ -139,29 +151,8 @@ pub const InitInfo = extern struct {
 };
 
 export fn gs_wasm_optimal_tile(width: u32, height: u32) TileResult {
-    var best_tx: u32 = 16;
-    var best_ty: u32 = 4;
-    var best_waste: u64 = @as(u64, width % 16) + @as(u64, height % 4);
-
-    for (CANDIDATE_TILES) |shape| {
-        const tx = shape[0];
-        const ty = shape[1];
-        const waste = @as(u64, width % tx) + @as(u64, height % ty);
-        if (waste < best_waste) {
-            best_waste = waste;
-            best_tx = tx;
-            best_ty = ty;
-        } else if (waste == best_waste) {
-            const new_disp = @as(u64, (width + tx - 1) / tx) * @as(u64, (height + ty - 1) / ty);
-            const old_disp = @as(u64, (width + best_tx - 1) / best_tx) * @as(u64, (height + best_ty - 1) / best_ty);
-            if (new_disp > old_disp) {
-                best_tx = tx;
-                best_ty = ty;
-            }
-        }
-    }
-
-    return .{ .tile_x = best_tx, .tile_y = best_ty };
+    const wg = selectWorkgroup(width, height);
+    return .{ .tile_x = wg[0], .tile_y = wg[1] };
 }
 
 export fn gs_wasm_init(width: u32, height: u32) InitInfo {
@@ -192,11 +183,21 @@ pub const BestResult = extern struct {
 };
 
 fn selectWorkgroup(width: u32, height: u32) [2]u32 {
+    const cells = @as(u64, width) * @as(u64, height);
     if (width >= height * 2) {
         return .{ 32, 2 };
     }
     if (height >= width * 2) {
         return .{ 4, 16 };
+    }
+    if (cells <= 200 * 200) {
+        return .{ 16, 8 };
+    }
+    if (width >= 250 and width <= 260 and height >= 250 and height <= 260) {
+        return .{ 32, 2 };
+    }
+    if (cells >= 400 * 400) {
+        return .{ 16, 8 };
     }
     return .{ 16, 4 };
 }
@@ -205,6 +206,21 @@ export fn gs_wasm_get_best(width: u32, height: u32, features: u32) BestResult {
     const wg = selectWorkgroup(width, height);
     const tile_x = wg[0];
     const tile_y = wg[1];
+
+    if ((features & FEATURE_F16) != 0) {
+        const result = buildWgslF16(width, height, tile_x, tile_y);
+        const dx = (width + tile_x - 1) / tile_x;
+        const dy = (height + tile_y - 1) / tile_y;
+        return .{
+            .shader_ptr = result.ptr,
+            .shader_len = result.len,
+            .tile_x = tile_x,
+            .tile_y = tile_y,
+            .dispatch_x = dx,
+            .dispatch_y = dy,
+            .variant_tag = @intFromEnum(VariantTag.f16),
+        };
+    }
 
     if ((features & FEATURE_SUBGROUPS) != 0) {
         const result = buildWgslSubgroups(width, height, tile_x, tile_y);
@@ -234,5 +250,42 @@ export fn gs_wasm_get_best(width: u32, height: u32, features: u32) BestResult {
         .variant_tag = @intFromEnum(VariantTag.standard),
     };
 }
+
+const MAX_SEEDS: usize = 20;
+
+var g_seed_cx: [MAX_SEEDS]u32 align(16) = [_]u32{0} ** MAX_SEEDS;
+var g_seed_cy: [MAX_SEEDS]u32 align(16) = [_]u32{0} ** MAX_SEEDS;
+var g_seed_sz: [MAX_SEEDS]u32 align(16) = [_]u32{0} ** MAX_SEEDS;
+var g_seed_n: u32 = 0;
+
+export fn gs_wasm_generate_seeds(width: u32, height: u32) u32 {
+    @memset(&g_seed_cx, 0);
+    @memset(&g_seed_cy, 0);
+    @memset(&g_seed_sz, 0);
+
+    const n_cells = @as(usize, width) * @as(usize, height);
+    const num_seeds: usize = if (n_cells > 10000) 20 else 5;
+
+    var prng = std.Random.DefaultPrng.init(42);
+    const rand = prng.random();
+
+    const w_usize = @as(usize, width);
+    const h_usize = @as(usize, height);
+
+    var s: usize = 0;
+    while (s < num_seeds) : (s += 1) {
+        g_seed_cx[s] = @intCast(rand.intRangeLessThan(usize, 5, w_usize - 5));
+        g_seed_cy[s] = @intCast(rand.intRangeLessThan(usize, 5, h_usize - 5));
+        g_seed_sz[s] = @intCast(rand.intRangeAtMost(usize, 2, 5));
+    }
+
+    g_seed_n = @intCast(num_seeds);
+    return g_seed_n;
+}
+
+export fn gs_wasm_seed_cx() [*]const u32 { return &g_seed_cx; }
+export fn gs_wasm_seed_cy() [*]const u32 { return &g_seed_cy; }
+export fn gs_wasm_seed_sz() [*]const u32 { return &g_seed_sz; }
+export fn gs_wasm_seed_count() u32 { return g_seed_n; }
 
 pub fn main() void {}

@@ -227,6 +227,22 @@ pub fn build(b: *std.Build) void {
     gpu_bench_1024.setEnvironmentVariable("PATH", new_path);
     b.step("bench-gpu-1024", "GPU benchmark at 1024^2, 100 steps").dependOn(&gpu_bench_1024.step);
 
+    // f16 variant benchmarks
+    var gpu_f16_256 = b.addRunArtifact(gpu_bench_exe);
+    gpu_f16_256.addArgs(&.{ "--f16", "256", "256", "500" });
+    gpu_f16_256.setEnvironmentVariable("PATH", new_path);
+    b.step("bench-gpu-f16", "GPU f16 benchmark at 256^2, 500 steps").dependOn(&gpu_f16_256.step);
+
+    var gpu_f16_512 = b.addRunArtifact(gpu_bench_exe);
+    gpu_f16_512.addArgs(&.{ "--f16", "512", "512", "500" });
+    gpu_f16_512.setEnvironmentVariable("PATH", new_path);
+    b.step("bench-gpu-f16-512", "GPU f16 benchmark at 512^2, 500 steps").dependOn(&gpu_f16_512.step);
+
+    var gpu_f16_1024 = b.addRunArtifact(gpu_bench_exe);
+    gpu_f16_1024.addArgs(&.{ "--f16", "1024", "1024", "100" });
+    gpu_f16_1024.setEnvironmentVariable("PATH", new_path);
+    b.step("bench-gpu-f16-1024", "GPU f16 benchmark at 1024^2, 100 steps").dependOn(&gpu_f16_1024.step);
+
     // ====================================================================
     // Map-Bench (end-to-end pipeline: init + seeded fill + steps + readback)
     // ====================================================================
