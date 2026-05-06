@@ -24,6 +24,13 @@ The agent reads it before each attempt to avoid retrying failed approaches.
 - Da=1.0, Db=0.5, dt=1.0 per Karl Sims spec
 - 9-point stencil: 0.2 cardinal, 0.05 diagonal, -1.0 center
 
+## Hardware Environment (Critical)
+- **GPU**: NVIDIA RTX 4060 Laptop
+- **Driver**: 595.97 / Vulkan backend (wgpu-native v29)
+- **Power Limit**: **40 W hard-locked in VBIOS** (Default 70 W, Max 90 W, but `nvidia-smi -pl` rejected — cannot override).
+- **Impact**: Extreme session variance. Cold-start bursts to ~2.5B cells/sec, then rapid throttling to ~580–950M sustained. All "same-session" comparisons must include a GPU warm-up step (256²×50 steps minimum) to burn off cold-start boost before timed runs.
+- **Mitigation**: `bench_all_variants.zig` now runs a 50-step global warm-up before any benchmark. This stabilizes clocks and makes comparisons meaningful.
+
 ## Tool Reminders for Agents
 - **Web search**: Use ddg_search_web_search for external research
 - **Fetch URL**: Use ddg_search_web_fetch_content to read full articles
@@ -39,12 +46,18 @@ The agent reads it before each attempt to avoid retrying failed approaches.
 
 ## Failure patterns:
 - 32×32 workgroup: silent failure (exceeds limits)
-- f16: skipped due to known Vulkan/NVIDIA driver issues with StorageInputOutput16
-- Temporal blocking: too complex for small 8×8 tiles, ROI unclear after batching win
+- f16: `-11% regression` at 256² on RTX 4060 (40W cap). Two independent attempts confirm ALU conversion overhead > bandwidth savings. Available as WASM export only.
+- Temporal blocking: too complex for small 8×8 tiles, ROI unclear after batching win. Unblocked now (Phase 15) because SMEM headroom proven (+23–40%).
+- Coarse SMEM (Phase 14): `+23%` vs baseline but hash = `61720aab...` not sacred. Tint compiler produces different SPIR-V for identical arithmetic in expanded shader context. Kept as opt-in native path only.
 
 ## Phase completion status:
 A: ✅  B: ✅  C: ⊘ (skipped)  D: ✅  E: ⊘ (evaluated)  F: ✅
 G: ⊘  H: ⊘ (superseded by F)  I: ⊘  J: ✅
+K: ✅  L: ✅  M: ✅  N: ✅  O: ✅  P: ✅  Q: ✅  R: ✅
+11: 🟡 (harness ready, manual browser tests pending)
+12: ❌ BLOCKED — f16 no benefit on RTX 4060
+13: ✅ DONE — per-resolution auto-tuning
+14: 🟡 DONE but BLOCKED for default — hash mismatch, kept as opt-in
 
 Current best: 2.35B cells/sec (8×8 tiling + command buffer batching)
 
@@ -156,9 +169,17 @@ MIXED: generateWgslVec2() works but produces different hash (8b860aea...). Perfo
 ### Iter 21: Phase 9 — ILP Maximization (2026-05-05)  
 DONE: Current FMA + early-sum pattern already achieves coefficient fusion and U/V independence via interleaved card_u→card_v→inline diags ordering. Further micro-optimizations risk hash breakage.
 
+### Iter 22: Phase 10 — Temporal Blocking Without Subgroups (2026-05-05)
+BLOCKED: 3-6hr Tier 3 implementation. Dual SMEM tiles with expanded halos and multi-barrier sync. Code complexity outweighs benefit given existing 2.3B peak baseline. Unblocked only if f16 or coarse SMEM demonstrate unsaturated bandwidth.
+
 ### Iter 23: Phase 12 — f16 Precision Revisit (2026-05-06)
 BLOCKED: Full f16 pipeline (Option A) implemented and benchmarked. Median -11% regression vs f32 baseline at 256²/500 (601M vs 677M). Hash `45eaeef6...` stable across all runs, confirming correctness. One anomalous run at 1,127M (+66%) suggests GPU power state sensitivity. Two independent attempts now confirm f16 provides no benefit on RTX 4060 for this kernel — consistent with original Phase K finding. WASM export (`gs_wasm_build_f16`) preserved for future browser testing where different GPU architectures may benefit.
-BLOCKED: 3-6hr Tier 3 implementation. Dual SMEM tiles with expanded halos and multi-barrier sync. Code complexity outweighs benefit given existing 2.3B peak baseline.
+
+### Iter 24: Phase 13 — Per-Resolution Auto-Tuning (2026-05-06)
+DONE: `selectWorkgroup()` in `wasm_shader.zig` and `gpu.zig` now picks 32×2 at 256², 16×8 at 128², 16×8 at 512², and falls back to 16×4 otherwise. Verified sacred hash `e16ed0e3...` holds with auto-selected 32×2 at 256². Integrated into `gs_wasm_get_best()` and native `gs_gpu_init()`.
+
+### Iter 25: Phase 14 — Proper Thread Coarsening v2 (SMEM-Only) (2026-05-06)
+DONE: `generateWgslCoarseSMEM()` implemented with STRIDE=34 expanded tile. Each 16×4 thread loads 2 cells (A and B) into SMEM + halos. After barrier, computes both cells from tile — zero global reads for cell B. Benchmarked +23% vs baseline under sustained load. Hash `61720aab...` matches interleaved/earlysum, not sacred. Exhaustive investigation proved arithmetic is identical; divergence is caused by Tint SPIR-V codegen differences when same `fma()` expressions live inside larger shader with extra branches. BLOCKED for default path due to hash gate, but kept as opt-in via `gs_gpu_init_coarse()`.
 
 ## nabla-type-lite JS Integration API (Phase 1)
 
