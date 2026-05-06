@@ -403,6 +403,64 @@ No browser WebGPU throughput measurement exists yet. All optimization targets ar
 - Standard tiling shader works on any WebGPU browser
 - nabla-type-lite is the target host; gray_scott_shader.wasm is already built and exported
 
+### Technical Design
+
+**Critical dependency: Deterministic seed generation**
+
+The native benchmark seeds grids using `std.Random.DefaultPrng.init(42)` (ChaCha8 CSPRNG). Without identical seeding, browser hash WON'T match `e16ed0e3...`. Solution: export seed generator from WASM (reuses exact same Zig RNG code).
+
+**WASM exports needed (add to `src/wasm_shader.zig`):**
+```
+gs_wasm_generate_seeds(width, height) -> u32 count
+gs_wasm_seed_cx() -> *const u32[]      // array of cx positions
+gs_wasm_seed_cy() -> *const u32[]      // array of cy positions  
+gs_wasm_seed_sz() -> *const u32[]      // array of sz sizes
+gs_wasm_seed_count() -> u32            // number of seeds generated
+```
+Seed algorithm matches `src/gpu/gpu.zig lines 516-546`: fill all cells with U=1.0/V=0.0, then 5 random squares (≤10000 cells) or 20 (>10000) at U=0.5/V=1.0, size 2-5.
+
+**Browser harness (`benchmark/index.html`) structure:**
+```
+1. Check navigator.gpu → bail if missing
+2. Request adapter → detect subgroups/shader-f16 features
+3. Load gray_scott_shader.wasm via instantiateStreaming()
+4. gs_wasm_init(w,h) → tile info → gs_wasm_build_periodic(w,h,tx,ty) → WGSL string
+5. Create compute pipeline with 5-entry bind group layout (storage_ro×2, storage_rw×2, uniform)
+6. Generate seeds via WASM export → fill Float32Arrays → upload to 4 grid buffers
+7. Single command encoder batched dispatch (500 passes, ping-pong bind groups)
+8. Timing: performance.mark → submit → queue.onSubmittedWorkDone() → performance.measure
+9. Readback: copyBufferToBuffer → mapAsync → getMappedRange → SHA-256 hash
+10. Report cells/sec, hash, match/mismatch
+```
+
+**Key JS APIs used:**
+| API | Purpose |
+|---|---|
+| `navigator.gpu.requestAdapter()` | Get GPU adapter |
+| `adapter.features.has("subgroups")` | Feature detection |
+| `WebAssembly.instantiateStreaming(fetch(".wasm"), {})` | Load WASM |
+| `device.createShaderModule({code: wgslString})` | Compile WGSL |
+| `device.createComputePipeline({layout,compute})` | Create pipeline |
+| `encoder.beginComputePass().dispatchWorkgroups().end()` | Batched dispatch |
+| `queue.onSubmittedWorkDone()` | GPU fence for timing |
+| `buffer.mapAsync(GPUMapMode.READ)` | Map buffer |
+| `buffer.getMappedRange()` | Get data |
+| `crypto.subtle.digest("SHA-256", arrayBuffer)` | Hash readback |
+
+**Serving requirements:**
+- MUST run on `localhost` (WebGPU requires secure context)
+- `.wasm` file MUST be served as `application/wasm` MIME type
+- Use `npx serve benchmark/` or equivalent HTTP server
+- Copy `zig-out/bin/gray_scott_shader.wasm` next to `index.html` before serving
+
+**Gotchas:**
+1. `submit()` returns immediately — time measurement requires `onSubmittedWorkDone()` fence
+2. Buffer mapping offset must be multiple of 8, range multiple of 4
+3. Readback buffer needs MAP_READ + COPY_DST usage flags (not STORAGE)
+4. No `<canvas>` needed — pure compute, no rendering
+5. "subgroups" feature name may differ by browser version; graceful fallback required
+6. Final U buffer position depends on step count: `STEPS % 2 === 0 ? u0 : u1`
+
 ### Tasks
 - [ ] **11.1** Create `benchmark/index.html` — minimal WebGPU harness that:
   - Imports `gray_scott_shader.wasm` from `zig-out/bin/`
