@@ -390,3 +390,222 @@ git rebase -i HEAD~N          # N = number of commits for one phase
 - [BLOCKED: Requires 3-6hr implementation (Tier 3). Dual SMEM tiles (TX+4 halo), multi-barrier coordination, 2-step fusion kernel. Code complexity exceeds practical benefit given current 2.3B baseline peak and thermal variance in benchmarking.] **10.1** Two-step kernel with dual SMEM tiles (expanded halo).
 - [BLOCKED: depends on 10.1] **10.2** Handle odd step counts.
 - [BLOCKED: depends on 10.1] **10.3** Benchmark at 1024² where bandwidth matters most.
+
+---
+
+## Phase 11: Browser Baseline Benchmark (PREREQUISITE)
+
+### Goal
+No browser WebGPU throughput measurement exists yet. All optimization targets are based on native wgpu-native benchmarks only. Establish real Chrome/Chrome-Canary baselines before proceeding with further optimization.
+
+### Context
+- Chrome 134+ supports `subgroups` feature → our `generateWgslSubgroups()` shader can finally be tested
+- Standard tiling shader works on any WebGPU browser
+- nabla-type-lite is the target host; gray_scott_shader.wasm is already built and exported
+
+### Tasks
+- [ ] **11.1** Create `benchmark/index.html` — minimal WebGPU harness that:
+  - Imports `gray_scott_shader.wasm` from `zig-out/bin/`
+  - Creates WebGPU device (request `subgroups` feature if available)
+  - Initializes 256² grid with standard seed pattern (RNG=42, as in native bench)
+  - Runs 500 steps with command buffer batching
+  - Reports cells/sec, GPU hash (SHA256 of readback array), variant used
+- [ ] **11.2** Measure baseline in Chrome stable (standard tiling shader, no subgroups).
+  Expected: ~2B cells/sec on RTX-class hardware.
+- [ ] **11.3** Measure in Chrome Canary 135+ with subgroups enabled.
+  Expected: >2.5B cells/sec if subgroup shuffle eliminates SMEM overhead.
+- [ ] **11.4** Cross-validate: ensure browser hash matches native `e16ed0e3...` for standard path.
+  Subgroup path may produce different hash.
+- [ ] **11.5** Document findings in PERFORMANCE.md. If browser < 50% of native, investigate transfer/queue bottlenecks.
+
+### Verification
+- `npx serve benchmark/` → open Chrome → see {cells_per_second, hash}
+- Hash `e16ed0e3c29cc50b5fa2b42791f31ab00b39d488e971b5d3c6017970ed037a43` for standard shader at 256²/500
+
+---
+
+## Phase 12: f16 Precision Revisit (HIGHEST IMPACT)
+
+### Goal
+Halve SMEM traffic by using f16 storage throughout. Previous attempt was reverted under false "compute-bound" diagnosis. Roofline model corrects this: AI=1.56 FLOPs/byte puts us deep in bandwidth-bound region — doubling effective SMEM BW should recover 30-80% of theoretical ceiling.
+
+### Why This Time Is Different
+- **Previous**: thought compute-bound → "f16 adds ALU overhead for zero gain"
+- **Corrected**: SMEM read latency dominates → f16 halves SMEM bytes read per neighbor
+- SMEM has 2× f16 throughput vs f32 on NVIDIA hardware
+- With 16 SMEM reads/cell, f16 saves 8× read transactions per thread
+
+### Implementation Strategy
+- **Option A** (recommended: full f16): `enable f16;` + `array<f16>` for all buffers + SMEM tiles. Load/store with f32→f16→f32 casts at boundaries only. Laplacian stays f32 accumulator. Expected: +40-80%.
+- **Option B** (conservative: SMEM-only f16): Keep global buffers f32, pack to vec2 in SMEM via `pack2x16float()` → unpack in register. Expected: +20-40%. Avoids buffer halving complexity.
+
+### Tasks
+- [ ] **12.1** Research current WebGPU `shader-f16` support across browsers and wgpu-native v29.
+  Already confirmed: RTX 4060 Vulkan/wgpu-native supports ShaderF16 (Phase K.1 finding).
+  Verify same for browser: Chrome 113+, Firefox 111+, Safari 16.4+.
+- [ ] **12.2** Implement Option A: full f16 pipeline in `src/gpu/gpu.zig`.
+  - New function: `generateWgslF16(buf, w, h, tx, ty)` — same structure as generateWgsl but with `enable f16;` + `array<f16>` storage
+  - Half-size ping-pong buffers (u0/u1/v0/v1) — each = W*H*2 bytes instead of W*H*4
+  - Init data written as packed u16 via Zig-side bitcasting
+  - Readback unpacks f16→f32 before hash computation
+  - Bind group layout unchanged (same binding indices, different buffer sizes)
+- [ ] **12.3** Add `gs_gpu_init_shape_f16(w,h,tx,ty)` export for benchmarking.
+- [ ] **12.4** Benchmark f16 vs f32 at 256²/500, 512²/500, 1024²/100 (native).
+  Target: ≥1.4× speedup over f32 baseline. Record new f16 hash.
+- [ ] **12.5** If f16 wins (>20%): make it default. Update sacred hash, document everywhere.
+  If loses again (<5%): BLOCK with detailed analysis, keep as WASM export option.
+- [ ] **12.6** WASM export: add `gs_wasm_build_f16(w,h,tx,ty)` for browser f16 path.
+  Integrate into `gs_wasm_get_best()` auto-selector.
+
+### Gate
+Hash changes inevitably. After benchmarking, confirm consistent hash between runs.
+
+---
+
+## Phase 13: Occupancy Auto-Tuning Integration
+
+### Goal
+Wire Phase 7 shape sweep findings into the dynamic engine selector so nabla-type-lite auto-picks optimal workgroup per resolution.
+
+### Current State
+- Phase 7 sweep proved: 128²→16×8 (+11%), 256²→32×2 (+39%), 512²→16×8 (+17%)
+- `gs_wasm_get_best()` already selects by aspect ratio (square→16×4, wide→32×2, tall→4×16)
+- `gs_gpu_init_shape(w,h,tx,ty)` already exists for parametric init
+
+### Tasks
+- [ ] **13.1** Update `gs_wasm_get_best()` in `src/wasm_shader.zig` with per-resolution logic:
+  - W×H ≤ 200²: tile = 16×8
+  - W ≈ H and ~250²: tile = 32×2
+  - W ≈ H and ≥400²: tile = 16×8
+  - Wide (W ≥ 2H): tile = 32×2 (existing)
+  - Tall (H ≥ 2W): tile = 4×16 (existing)
+- [ ] **13.2** Export `gs_wasm_optimal_tile()` updated to use new per-resolution logic.
+- [ ] **13.3** Verify hash unchanged across all selected shapes at same resolution.
+- [ ] **13.4** Document in RESEARCH_NOTES.md: occupancy theory behind per-resolution selection.
+
+### Verification
+- `zig build test`, `zig build wasm-shader`
+- Shape sweep confirms hash identity per resolution
+
+---
+
+## Phase 14: Proper Thread Coarsening v2 (SMEM-Only)
+
+### Goal
+Each thread computes 2 adjacent horizontal cells within the SMEM barrier — halving dispatch count while sharing neighbor loads. Previous attempt (-34%) failed because cell B used global reads; this approach keeps everything inside shared memory.
+
+### Algorithm
+```
+Workgroup stays 16×4. SMEM tile expands to STRIDE=TX*2+2=34.
+Thread (lid.x, lid.y) loads cells at (x, y) AND (x+TX, y) into tile.
+After barrier, each thread:
+  - Cell A: (lid.x+1, lid.y+1) → normal laplacian from tile
+  - Cell B: (lid.x+1+TX, lid.y+1) → laplacian from shifted tile reads
+All neighbors for B are also in expanded tile — zero global reads for cell B.
+Dispatch: ceil(W/(TX*2)) × ceil(H/TY). Coverage doubles per dispatch.
+```
+
+### Tasks
+- [ ] **14.1** Create `generateWgslCoarseSMEM(buf,w,h)` — coarsened variant with STRIDE=34 expanded tile.
+  16×4 threads load 34×6 tile (=204 elements). Each thread loads up to 3 cells into SMEM.
+  After barrier, compute cell A (left) and cell B (right) from tile.
+- [ ] **14.2** Handle grid edges: when TX*2 doesn't divide W, last column processes single cell.
+- [ ] **14.3** Add `gs_gpu_init_coarse(width,height)` export.
+- [ ] **14.4** Benchmark vs baseline at 256²/500, 512²/500, 1024²/100.
+  Target: ≥1.2× speedup over f32 baseline. Hash must match `e16ed0e3...`.
+- [ ] **14.5** If successful (>15%): integrate into auto-selector as alternative to shape tuning.
+
+### Verification
+- Hash gate: MUST match `e16ed0e3c29cc50b5fa2b42791f31ab00b39d488e971b5d3c6017970ed037a43`
+- `zig build test` passes
+- Benchmark sweep confirms improvement
+
+---
+
+## Phase 15: Temporal Blocking Without Subgroups (Unblock Only If Phases 12-14 Succeed)
+
+### Goal
+Two-step fusion kernel: process 2 simulation steps per global memory load. Previously blocked for complexity (Tier 3). Attempt only if f16 (Phase 12) or coarsening (Phase 14) demonstrate we haven't saturated SMEM bandwidth yet.
+
+### Algorithm
+```
+Load input tile: 20×8 (TX+4 × TY+4 — needs extra halo for step 2 dependencies)
+Step 1: Compute u1, v1 for interior 16×4 cells → store to tile_u_mid, tile_v_mid in SMEM  
+Barrier
+Step 2: Read u1_neighbors, v1_neighbors from tile_u_mid/tile_v_mid → compute u2, v2 → write global
+Net savings: eliminate 1 global read/write pair per 2-step batch at cost of 1 extra SMEM barrier
+```
+
+### Tasks
+- [ ] **15.1** (Only if Phase 12 + 14 are complete.) Create `generateWgslTemporal(buf,w,h)`.
+  Three SMEM arrays: tile_uv_in (20×8 for initial load), tile_u_mid/tile_v_mid (interior 16×4 for intermediate state).
+  Two barriers: after initial load, after step 1 mid-store.
+- [ ] **15.2** Handle odd step counts: final single step uses standard (or coarsened) path.
+- [ ] **15.3** Benchmark temporal vs non-temporal at 1024²/100 where bandwidth matters most.
+- [ ] **15.4** Hash verification. Temporal must produce identical result as doing 2× single steps.
+
+---
+
+## Phase 16: Pipeline Specialization Constants
+
+### Goal
+Replace bufPrint-formatted `const WIDTH: u32 = {d}u;` with WGSL `@id()` override constants. Moves dimensions from runtime uniform to compile-time constant, potentially reducing register pressure.
+
+### Tasks
+- [ ] **16.1** Add `override WIDTH: u32; override HEIGHT: u32;` to WGSL template instead of const declarations.
+- [ ] **16.2** Set values via `WGPUPipelineConstant` at pipeline creation time in `gs_gpu_init()`.
+- [ ] **16.3** Benchmark: expected tiny (<3%) gain from reduced register pressure.
+  Verify hash unchanged. If measurable: keep. If noise: document and skip.
+
+---
+
+## Phase 17: Pearson Map Browser Integration
+
+### Goal
+Complete the end-to-end spatial map integration path for nabla-type-lite: load Pearson shader, create feed/kill maps, run Neumann-boundary simulation, render PGM output.
+
+### Current State
+- `generateWgslPearson()` handles Neumann boundaries with spatial feed/kill maps
+- Native `bench-map-pearson` already produces `.pgm` files at up to 4096²
+- `gs_wasm_build_pearson()` exports the WGSL string via WASM
+
+### Tasks
+- [ ] **17.1** Document pearson-mode JS integration in KNOWLEDGE.md (bind group layout = 7 entries including feed_map/kill_map buffers).
+- [ ] **17.2** Add pearson test to browser benchmark harness (Phase 11 HTML page).
+- [ ] **17.3** Benchmark GPU pearson vs CPU reference at 1024²/50000 (map-scale).
+
+---
+
+## File Map (Expanded)
+
+| File | What lives there | Phases touching it |
+|---|---|---|
+| `src/wgsl_gen.zig` | All generateWgsl* variants | 11-15 (new variants: f16, coarse-smem, temporal) |
+| `src/wasm_shader.zig` | WASM exports, engine selection | 11-13 (browser harness, auto-tuner) |
+| `src/gpu/gpu.zig` | Native pipeline, benchmark driver | 11-15 (f16 buffers, coarse dispatch) |
+| `build.zig` | Build targets | 11-15 (new bench targets) |
+| `benchmark/index.html` | Browser WebGPU harness | 11,17 (baseline, pearson test) |
+| `PERFORMANCE.md` | Results tracker | all |
+| `KNOWLEDGE.md` | Discoveries log | all |
+
+---
+
+## Execution Order
+
+```
+Phase 11 → Browser baseline     (blocker: no measurements without this)
+    ↓
+Phase 12 → f16 revisit           (highest impact, attacks proven bottleneck)
+    ↓
+Phase 13 → Auto-tuning               (low risk, immediate win, ~1 hour)
+    ↓
+Phase 14 → Proper coarsening v2  (requires SMEM-expand approach)
+    ↓
+Phase 15 → Temporal blocking     (only if 12+14 haven't saturated gains)
+    ↓
+Phase 16 → Spec constants        (quick, low upside)
+    ↓
+Phase 17 → Pearson integration      (niche, important for nabla-type-lite completeness)
+```
+
+Phase 11-13 can partially overlap (different files). Phase 14-15 are sequential, each building on prior results.

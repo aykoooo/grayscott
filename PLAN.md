@@ -229,3 +229,54 @@ Recommended strategy: **Do both**. Phase U first (fastest path to nabla-type-lit
 
 ## Phase 10: Temporal Blocking Without Subgroups
 - [BLOCKED] **10.1–10.4** Two-step kernel with dual SMEM tiles
+
+---
+
+# Phase 11–17: Next Optimization Round (2026-05-06)
+
+Roofline analysis corrected "compute-bound" → bandwidth-bound. Proven bottleneck is SMEM read latency.
+Priority: browser baseline → f16 revisit → auto-tuning → coarsening v2.
+
+## Phase 11: Browser Baseline Benchmark
+- [ ] **11.1** Create `benchmark/index.html` WebGPU harness
+- [ ] **11.2** Measure Chrome stable baseline (standard tiling)
+- [ ] **11.3** Measure Chrome Canary 135+ with subgroups enabled
+- [ ] **11.4** Cross-validate hash e16ed0e3... vs native
+- [ ] **11.5** Document in PERFORMANCE.md
+
+## Phase 12: f16 Precision Revisit
+- [ ] **12.1** Confirm shader-f16 browser support matrix
+- [ ] **12.2** Implement full f16 pipeline (generateWgslF16 + half-size buffers)
+- [ ] **12.3** Export f16 init function for benchmarking
+- [ ] **12.4** Benchmark f16 vs f32 at 256²/512²/1024²
+- [ ] **12.5** If +20%+: make default + update hash gate. Else: BLOCK.
+- [ ] **12.6** WASM export gs_wasm_build_f16()
+
+## Phase 13: Occupancy Auto-Tuning Integration
+- [ ] **13.1** Per-resolution shape selection in gs_wasm_get_best()
+- [ ] **13.2** Update gs_wasm_optimal_tile() with sweep findings
+- [ ] **13.3** Verify hash unchanged across all selections
+- [ ] **13.4** Document occupancy theory
+
+## Phase 14: Proper Thread Coarsening v2
+- [ ] **14.1** generateWgslCoarseSMEM() — STRIDE=34 expanded tile, both cells from SMEM
+- [ ] **14.2** Handle grid edge cases (last column single-cell)
+- [ ] **14.3** Export gs_gpu_init_coarse()
+- [ ] **14.4** Benchmark vs baseline. Hash must match e16ed0e3...
+- [ ] **14.5** Integrate into auto-selector if >15%
+
+## Phase 15: Temporal Blocking Retry
+- [ ] **15.1** create generateWgslTemporal() with dual-SMEM mid-arrays (only if Phases 12+14 succeed)
+- [ ] **15.2** Handle odd step counts
+- [ ] **15.3** Benchmark at 1024²/100
+- [ ] **15.4** Hash verification (temporal must = 2× single step result)
+
+## Phase 16: Pipeline Specialization Constants
+- [ ] **16.1** Replace const WIDTH/HEIGHT with @id() override
+- [ ] **16.2** Set via WGPUPipelineConstant at pipeline creation
+- [ ] **16.3** Benchmark; keep if measurable
+
+## Phase 17: Pearson Map Browser Integration
+- [ ] **17.1** JS integration docs for spatial f/k maps
+- [ ] **17.2** Pearson test in browser harness
+- [ ] **17.3** GPU pearson vs CPU reference benchmark
