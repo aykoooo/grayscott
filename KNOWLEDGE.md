@@ -58,6 +58,10 @@ K: ✅  L: ✅  M: ✅  N: ✅  O: ✅  P: ✅  Q: ✅  R: ✅
 12: ❌ BLOCKED — f16 no benefit on RTX 4060
 13: ✅ DONE — per-resolution auto-tuning
 14: 🟡 DONE but BLOCKED for default — hash mismatch, kept as opt-in
+18: ✅ DONE — 16×16 SMEM diagnostic, no benefit, utility kept
+19: ❌ REVERTED — 5-point ≤30% threshold at all resolutions
+20: ❌ REVERTED — ILP load clustering no benefit, 2 warps/wg insufficient
+21: 🟡 DONE browser-only — subgroup shuffle variant exported, ⚡MANUAL test pending
 
 Current best: 2.35B cells/sec (8×8 tiling + command buffer batching)
 
@@ -177,6 +181,18 @@ BLOCKED: Full f16 pipeline (Option A) implemented and benchmarked. Median -11% r
 
 ### Iter 24: Phase 13 — Per-Resolution Auto-Tuning (2026-05-06)
 DONE: `selectWorkgroup()` in `wasm_shader.zig` and `gpu.zig` now picks 32×2 at 256², 16×8 at 128², 16×8 at 512², and falls back to 16×4 otherwise. Verified sacred hash `e16ed0e3...` holds with auto-selected 32×2 at 256². Integrated into `gs_wasm_get_best()` and native `gs_gpu_init()`.
+
+### Iter 29: Phase 21 — Subgroup Shuffle Halo Browser-Only (2026-05-08)
+DONE (browser-only): Created `generateWgslSubgroupShuffle()` with horizontal-only subgroup ops (subgroupShuffleUp/Down for ±X neighbors, SMEM for vertical, diagonal, and edge threads). More conservative than existing variant — doesn't attempt cross-warp vertical shuffling. Exported via `gs_wasm_build_subgroup_shuffle()` and wired into `gs_wasm_get_best()` as `VariantTag.subgroup_shuffle = 8`. Native benchmarks unaffected — standard path unchanged. Naga rejects `enable subgroups;` in native mode (browser-only). ⚡ MANUAL: browser test in Chrome 135+ pending. `zig build test` + `zig build wasm-shader` + `zig build bench-gpu` all pass.
+
+### Iter 28: Phase 20 — ILP SMEM Load/Compute Reordering (2026-05-08)
+BLOCKED: Created `generateWgslILP()` with all SMEM loads clustered before barrier and compute clustered after. Sacred hash confirmed matching (`e16ed0e3...`) — instruction reordering preserved arithmetic determinism (unlike Phase 14 coarse SMEM). But median 1,128M vs baseline 1,400M (-19%). Finding: only 2 warps per workgroup (64 threads on NVIDIA) provides insufficient warp-level parallelism for ILP-based latency hiding. Turing Tuning Guide requires 4-way ILP with 4 warps to hide dependent FMA latency; at 2 warps, even maximum ILP can't fill the pipeline. Cluster load ordering adds no measurable benefit. REVERTED per Path B.
+
+### Iter 27: Phase 19 — 5-Point Stencil (2026-05-08)
+REVERTED: Implemented `generateWgsl5Point()` with cardinal-only stencil (0.25 weights, no diagonals). Deterministic confirmed across all resolutions (3× matching hashes). Performance below +30% threshold: 256² (-25%), 512² (-9%), 1024² (+10%). Finding: 5-point theoretically halves SMEM reads (4 vs 8) but L2 cache absorbs the savings at ≤1024² on Ada. The 9-point stencil's extra diagonal reads are cheap and already well-pipelined. Reverted per plan. Phase 19 code preserved in git history for reference.
+
+### Iter 26: Phase 18 — 16×16 SMEM Tiling Diagnostic (2026-05-08)
+DONE: Added `--tile TX TY` CLI flag and `gs_gpu_init_tiled()` function. Benchmarked cuGrayScott-matching 16×16 SMEM tiles (256 threads/wg, 1.27 global-loads/output-cell) vs auto-selected tiles (64 threads/wg). Hash matches sacred at 256²; correctness confirmed at all resolutions. Performance: no clear benefit on RTX 4060 — 16×16 median is slower at 512² (-13%) and 1024² (-23%). Ada L2 cache (6MB) absorbs the larger-tile load savings at ≤1024². The theoretical 40% global load reduction is invisible because most reads already hit cache. Smaller workgroups (16×8, 32×2) with 64 threads achieve higher occupancy and outperform 16×16 at accessible resolutions. `gs_gpu_init_tiled()` + `--tile` flag kept as permanent utilities.
 
 ### Iter 25: Phase 14 — Proper Thread Coarsening v2 (SMEM-Only) (2026-05-06)
 DONE: `generateWgslCoarseSMEM()` implemented with STRIDE=34 expanded tile. Each 16×4 thread loads 2 cells (A and B) into SMEM + halos. After barrier, computes both cells from tile — zero global reads for cell B. Benchmarked +23% vs baseline under sustained load. Hash `61720aab...` matches interleaved/earlysum, not sacred. Exhaustive investigation proved arithmetic is identical; divergence is caused by Tint SPIR-V codegen differences when same `fma()` expressions live inside larger shader with extra branches. BLOCKED for default path due to hash gate, but kept as opt-in via `gs_gpu_init_coarse()`.

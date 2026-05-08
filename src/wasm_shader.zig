@@ -31,6 +31,7 @@ pub const VariantTag = enum(u32) {
     standard = 0,
     subgroups = 1,
     f16 = 2,
+    subgroup_shuffle = 8,
     pearson = 4,
 };
 
@@ -46,6 +47,11 @@ fn buildWgsl(width: u32, height: u32, tile_x: u32, tile_y: u32) BufResult {
 
 fn buildWgslSubgroups(width: u32, height: u32, tile_x: u32, tile_y: u32) BufResult {
     const result = wgsl.generateWgslSubgroups(&g_buf, width, height, tile_x, tile_y) catch return .{ .ptr = &g_buf, .len = 0 };
+    return .{ .ptr = &g_buf, .len = @intCast(result.len) };
+}
+
+fn buildWgslSubgroupShuffle(width: u32, height: u32, tile_x: u32, tile_y: u32) BufResult {
+    const result = wgsl.generateWgslSubgroupShuffle(&g_buf, width, height, tile_x, tile_y) catch return .{ .ptr = &g_buf, .len = 0 };
     return .{ .ptr = &g_buf, .len = @intCast(result.len) };
 }
 
@@ -65,6 +71,11 @@ export fn gs_wasm_build_pearson(width: u32, height: u32, tile_x: u32, tile_y: u3
 
 export fn gs_wasm_build_subgroups(width: u32, height: u32, tile_x: u32, tile_y: u32) BufResult {
     return buildWgslSubgroups(width, height, tile_x, tile_y);
+}
+
+export fn gs_wasm_build_subgroup_shuffle(width: u32, height: u32, tile_x: u32, tile_y: u32) BufResult {
+    const result = wgsl.generateWgslSubgroupShuffle(&g_buf, width, height, tile_x, tile_y) catch return .{ .ptr = &g_buf, .len = 0 };
+    return .{ .ptr = &g_buf, .len = @intCast(result.len) };
 }
 
 export fn gs_wasm_build_vec2(width: u32, height: u32, tile_x: u32, tile_y: u32) BufResult {
@@ -223,7 +234,7 @@ export fn gs_wasm_get_best(width: u32, height: u32, features: u32) BestResult {
     }
 
     if ((features & FEATURE_SUBGROUPS) != 0) {
-        const result = buildWgslSubgroups(width, height, tile_x, tile_y);
+        const result = buildWgslSubgroupShuffle(width, height, tile_x, tile_y);
         const dx = (width + tile_x - 1) / tile_x;
         const dy = (height + tile_y - 1) / tile_y;
         return .{
@@ -233,7 +244,7 @@ export fn gs_wasm_get_best(width: u32, height: u32, features: u32) BestResult {
             .tile_y = tile_y,
             .dispatch_x = dx,
             .dispatch_y = dy,
-            .variant_tag = @intFromEnum(VariantTag.subgroups),
+            .variant_tag = @intFromEnum(VariantTag.subgroup_shuffle),
         };
     }
 

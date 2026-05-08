@@ -638,6 +638,10 @@ pub export fn gs_gpu_init_shape(width: u32, height: u32, tile_x: u32, tile_y: u3
     return gs_gpu_init(width, height);
 }
 
+pub export fn gs_gpu_init_tiled(width: u32, height: u32, tile_x: u32, tile_y: u32) bool {
+    return gs_gpu_init_shape(width, height, tile_x, tile_y);
+}
+
 pub export fn gs_gpu_init_shape_vec2(width: u32, height: u32, tile_x: u32, tile_y: u32) bool {
     g.wg_x = tile_x;
     g.wg_y = tile_y;

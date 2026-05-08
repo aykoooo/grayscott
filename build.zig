@@ -243,6 +243,22 @@ pub fn build(b: *std.Build) void {
     gpu_f16_1024.setEnvironmentVariable("PATH", new_path);
     b.step("bench-gpu-f16-1024", "GPU f16 benchmark at 1024^2, 100 steps").dependOn(&gpu_f16_1024.step);
 
+    // 16x16 tile benchmarks (Phase 18 diagnostic)
+    var gpu_t16_256 = b.addRunArtifact(gpu_bench_exe);
+    gpu_t16_256.addArgs(&.{ "--tile", "16", "16" });
+    gpu_t16_256.setEnvironmentVariable("PATH", new_path);
+    b.step("bench-gpu-t16", "GPU 16x16 tile at 256^2, 500 steps").dependOn(&gpu_t16_256.step);
+
+    var gpu_t16_512 = b.addRunArtifact(gpu_bench_exe);
+    gpu_t16_512.addArgs(&.{ "--tile", "16", "16", "512", "512", "500" });
+    gpu_t16_512.setEnvironmentVariable("PATH", new_path);
+    b.step("bench-gpu-t16-512", "GPU 16x16 tile at 512^2, 500 steps").dependOn(&gpu_t16_512.step);
+
+    var gpu_t16_1024 = b.addRunArtifact(gpu_bench_exe);
+    gpu_t16_1024.addArgs(&.{ "--tile", "16", "16", "1024", "1024", "100" });
+    gpu_t16_1024.setEnvironmentVariable("PATH", new_path);
+    b.step("bench-gpu-t16-1024", "GPU 16x16 tile at 1024^2, 100 steps").dependOn(&gpu_t16_1024.step);
+
     // ====================================================================
     // Map-Bench (end-to-end pipeline: init + seeded fill + steps + readback)
     // ====================================================================
@@ -385,6 +401,18 @@ pub fn build(b: *std.Build) void {
     var bench_all_run = b.addRunArtifact(bench_all_exe);
     bench_all_run.setEnvironmentVariable("PATH", new_path);
     b.step("bench-all", "All variants sweep: baseline/FMA/interleaved/earlysum/5point (same-process)").dependOn(&bench_all_run.step);
+
+    const loop_parse_mod = b.createModule(.{
+        .root_source_file = b.path("src/loop_parser.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    const loop_parse_tests = b.addTest(.{
+        .root_module = loop_parse_mod,
+    });
+    const run_loop_parse_tests = b.addRunArtifact(loop_parse_tests);
+    b.step("test-loop-parse", "Run loop parser tests").dependOn(&run_loop_parse_tests.step);
 
     const bench_shape_mod = b.createModule(.{ .root_source_file = b.path("BENCHMARK/bench_shape_sweep.zig"), .target = target, .optimize = .ReleaseFast });
     bench_shape_mod.addIncludePath(b.path("vendor/wgpu-native/include"));

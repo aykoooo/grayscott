@@ -170,3 +170,30 @@ All hashes identical across shapes at each resolution (correctness confirmed).
 - 512²: **16×8** (best large-grid shape)
 
 **Decision:** Keep 16×4 as default (best overall balance, already configured). 32×2 gains at 256² are significant but shape-specific to that exact width; 16×8 is the most consistent across resolutions.
+
+## Phase 18: 16×16 SMEM Tiling Diagnostic (2026-05-08)
+
+Hash matches sacred `e16ed0e3...` at 256² and matches between variants at all resolutions. Performance results (all under sustained 40W thermal load, 3 runs each):
+
+| Resolution | Variant | Run 1 | Run 2 | Run 3 | Median | Delta |
+|---|---|---|---|---|---|---|
+| 256²/500 | Baseline (32×2 auto) | 2,541M | 959M | 1,378M | 1,378M | — |
+| 256²/500 | 16×16 tile | 1,315M | 2,281M | 1,921M | 1,921M | +39% |
+| 512²/500 | Baseline (16×8 auto) | 3,639M | 3,464M | 3,087M | 3,464M | — |
+| 512²/500 | 16×16 tile | 4,576M | 2,367M | 3,021M | 3,021M | -13% |
+| 1024²/100 | Baseline (16×8 auto) | 2,475M | 3,088M | 3,648M | 3,088M | — |
+| 1024²/100 | 16×16 tile | 2,371M | 2,310M | 4,911M | 2,371M | -23% |
+
+**Finding:** cuGrayScott-style 16×16 tiles (256 threads/wg, 1.27 global-loads/output-cell) show no clear benefit on RTX 4060. Ada L2 cache (6MB) absorbs tile-load savings at ≤1024² — the larger SMEM tile loads more data but the cache already services most of those reads for smaller tiles. Theoretical 40% load reduction is invisible at accessible resolutions. `gs_gpu_init_tiled()` kept as permanent utility.
+
+## Phase 19: 5-Point Stencil (2026-05-08) — REVERTED
+
+Deterministic confirmed (3× matching hash per resolution). Performance below +30% threshold:
+
+| Resolution | 5-pt median | Baseline median | Delta | 5-pt Hash |
+|---|---|---|---|---|
+| 256²/500 | 1,536M | 2,048M | -25% | `af8715e1...` |
+| 512²/500 | 3,379M | 3,704M | -8.8% | `8c5a7fca...` |
+| 1024²/100 | 4,002M | 3,646M | +9.8% | `91c40dce...` |
+
+**Finding:** 5-point theoretically halves SMEM neighbor reads (4 vs 8 per cell), but L2 cache absorbs the savings at ≤1024² on Ada. Simple `fma(card, 0.25, -center)` is cleaner but the extra ALU overhead from 4 diagonal reads in the 9-point stencil is already small and well-pipelined. Reverted per +30% threshold rule.

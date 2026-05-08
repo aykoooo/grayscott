@@ -11,10 +11,30 @@ pub fn main() !void {
 
     var use_f16: bool = false;
     var arg_idx: u32 = 1;
+    var use_tile: bool = false;
+    var tile_x: u32 = 0;
+    var tile_y: u32 = 0;
 
-    if (args.len > 1 and std.mem.eql(u8, args[1], "--f16")) {
-        use_f16 = true;
-        arg_idx += 1;
+    while (arg_idx < args.len) : (arg_idx += 1) {
+        if (std.mem.eql(u8, args[@intCast(arg_idx)], "--f16")) {
+            use_f16 = true;
+        } else if (std.mem.eql(u8, args[@intCast(arg_idx)], "--tile")) {
+            arg_idx += 1;
+            if (arg_idx >= args.len) {
+                std.debug.print("Error: --tile requires TX TY\n", .{});
+                return error.InvalidArgs;
+            }
+            tile_x = try std.fmt.parseInt(u32, args[@intCast(arg_idx)], 10);
+            arg_idx += 1;
+            if (arg_idx >= args.len) {
+                std.debug.print("Error: --tile requires TX TY\n", .{});
+                return error.InvalidArgs;
+            }
+            tile_y = try std.fmt.parseInt(u32, args[@intCast(arg_idx)], 10);
+            use_tile = true;
+        } else {
+            break;
+        }
     }
 
     const w: u32 = if (args.len > arg_idx) try std.fmt.parseInt(u32, args[@intCast(arg_idx)], 10) else 256;
@@ -27,7 +47,12 @@ pub fn main() !void {
     const feed: f32 = 0.0545;
     const kill: f32 = 0.0620;
 
-    if (use_f16) {
+    if (use_tile) {
+        if (!gpu.gs_gpu_init_tiled(w, h, tile_x, tile_y)) {
+            std.debug.print("GPU tiled init failed ({}x{})\n", .{ tile_x, tile_y });
+            return error.GpuInitFailed;
+        }
+    } else if (use_f16) {
         if (!gpu.gs_gpu_init_f16(w, h)) {
             std.debug.print("GPU f16 init failed\n", .{});
             return error.GpuInitFailed;
@@ -73,7 +98,11 @@ pub fn main() !void {
         _ = try std.fmt.bufPrint(hash_str[i * 2 ..][0..2], "{x:0>2}", .{byte});
     }
 
-    const variant_tag = if (use_f16) "f16" else "f32";
+    const variant_tag = if (use_tile) b: {
+        var buf: [32]u8 = undefined;
+        const tag = std.fmt.bufPrint(&buf, "tile-{d}x{d}", .{ tile_x, tile_y }) catch "tiled";
+        break :b tag;
+    } else if (use_f16) "f16" else "f32";
     std.debug.print(
         \\{{"cells_per_second":{d},"hash":"{s}","width":{d},"height":{d},"steps":{d},"variant":"{s}"}}
         \\
