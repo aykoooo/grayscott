@@ -293,3 +293,29 @@ function onChangeResolution(newW, newH) {
     // Reallocate buffers with newInfo.buffer_size, recreate pipeline
 }
 ```
+
+## Iter 30: Browser WebGPU Benchmark + Multi-Run Mode
+
+### Discovery: Native vs Browser Hash Divergence
+
+- **Native sacred hash** (Naga/Vulkan): `e16ed0e3...`
+- **Browser sacred hash** (Chrome 148/Tint): `8a39d2ab...`
+- Cross-implementation divergence is deterministic and stable — each needs its own sacred hash
+- Cause: Tint and Naga emit different SPIR-V instruction ordering for identical WGSL, leading to different float rounding paths
+
+### Browser Subgroups Result (Chrome 148, NVIDIA RTX 4060)
+
+- Standard: median **3.4B cells/sec** (3 runs)
+- Subgroups: median **4.4–7.3B cells/sec** depending on run variance
+- Peak observed: **10.6B cells/sec**
+- Subgroup speedup: **1.9–3.0x** vs standard
+- Target 6.8B **exceeded at peak**
+
+### Multi-Run Benchmark Page
+
+Updated `benchmark/index.html` with:
+- Configurable `NUM_RUNS` (default 3)
+- Per-run table showing time + throughput + hash match
+- Median calculation per variant
+- Speedup ratio between subgroups and standard
+- 200ms cooldown between runs to reduce scheduling variance

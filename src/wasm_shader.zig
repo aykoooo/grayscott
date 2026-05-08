@@ -39,6 +39,7 @@ const FEATURE_SUBGROUPS: u32 = 1;
 const FEATURE_F16: u32 = 2;
 
 var g_buf: [16384]u8 = undefined;
+var g_init_info: InitInfo = undefined;
 
 fn buildWgsl(width: u32, height: u32, tile_x: u32, tile_y: u32) BufResult {
     const result = wgsl.generateWgsl(&g_buf, width, height, tile_x, tile_y) catch return .{ .ptr = &g_buf, .len = 0 };
@@ -164,6 +165,41 @@ pub const InitInfo = extern struct {
 export fn gs_wasm_optimal_tile(width: u32, height: u32) TileResult {
     const wg = selectWorkgroup(width, height);
     return .{ .tile_x = wg[0], .tile_y = wg[1] };
+}
+
+export fn gs_wasm_init_ptr(width: u32, height: u32) u32 {
+    const tile = gs_wasm_optimal_tile(width, height);
+    g_init_info = .{
+        .tile_x = tile.tile_x,
+        .tile_y = tile.tile_y,
+        .workgroup_x = tile.tile_x,
+        .workgroup_y = tile.tile_y,
+        .dispatch_x = (width + tile.tile_x - 1) / tile.tile_x,
+        .dispatch_y = (height + tile.tile_y - 1) / tile.tile_y,
+        .buffer_size = width * height * 4,
+        .grid_width = width,
+        .grid_height = height,
+    };
+    return g_init_info.buffer_size;
+}
+
+export fn gs_wasm_init_tile_x() u32 { return g_init_info.tile_x; }
+export fn gs_wasm_init_tile_y() u32 { return g_init_info.tile_y; }
+export fn gs_wasm_init_dispatch_x() u32 { return g_init_info.dispatch_x; }
+export fn gs_wasm_init_dispatch_y() u32 { return g_init_info.dispatch_y; }
+
+export fn gs_wasm_build_standard_shader(width: u32, height: u32, tile_x: u32, tile_y: u32) u32 {
+    const result = buildWgsl(width, height, tile_x, tile_y);
+    return result.len;
+}
+
+export fn gs_wasm_build_subgroups_shader(width: u32, height: u32, tile_x: u32, tile_y: u32) u32 {
+    const result = buildWgslSubgroups(width, height, tile_x, tile_y);
+    return result.len;
+}
+
+export fn gs_wasm_shader_ptr() u32 {
+    return @intFromPtr(&g_buf);
 }
 
 export fn gs_wasm_init(width: u32, height: u32) InitInfo {
