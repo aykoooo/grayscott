@@ -649,19 +649,291 @@ Complete the end-to-end spatial map integration path for nabla-type-lite: load P
 ## Execution Order
 
 ```
-Phase 11 → Browser baseline     (blocker: no measurements without this)
+Phase 18 → 16×16 benchmark (diagnostic)       [benchmark-only, no new variant]
     ↓
-Phase 12 → f16 revisit           (highest impact, attacks proven bottleneck)
+Phase 19 → 5-point stencil                     [new variant, separate deterministic hash gate]
     ↓
-Phase 13 → Auto-tuning               (low risk, immediate win, ~1 hour)
+Phase 20 → ILP load/compute reordering         [must preserve sacred hash, risky]
     ↓
-Phase 14 → Proper coarsening v2  (requires SMEM-expand approach)
-    ↓
-Phase 15 → Temporal blocking     (only if 12+14 haven't saturated gains)
-    ↓
-Phase 16 → Spec constants        (quick, low upside)
-    ↓
-Phase 17 → Pearson integration      (niche, important for nabla-type-lite completeness)
+Phase 21 → Subgroup shuffle                    [browser-only, Naga-blocked natively]
 ```
 
-Phase 11-13 can partially overlap (different files). Phase 14-15 are sequential, each building on prior results.
+Phase 18 result informs interpretation of 19-21.
+Phases 19-21 are sequential (each builds on learnings from prior phase).
+
+### ⚠️ LOOP ROUTING — READ THIS FIRST
+
+Phases 15–17 (Temporal Blocking, Spec Constants, Pearson) are **deferred** — do NOT
+execute them before Phases 18–21. The first unchecked task for the NEXT session is
+**Phase 18.1** (16×16 benchmark diagnostic). Start there. After Phase 21 completes,
+return to Phase 15 for re-evaluation.
+
+---
+
+## Phase 18: cuGrayScott 16×16 SMEM Tiling (Baseline Diagnostic)
+
+### Goal
+cuGrayScott uses 16×16 SMEM tiles (256 threads/workgroup, 1.27 global-loads/output-cell).
+Our best is 32×2 (64 threads, 2.13 loads/cell). Diagnostic benchmark — determine if this
+architectural difference matters on Ada Lovelace (RTX 4060) or whether the L2 cache
+absorbs the benefit at accessible resolutions.
+
+### Halo Ratio Math
+| Workgroup | SMEM tile size | Output cells | Load ratio |
+|---|---|---|---|
+| cuGrayScott 16×16 | 18×18 = 324 | 16×16 = 256 | 324/256 = **1.27** |
+| Our 32×2 (default) | 34×4 = 136 | 32×2 = 64 | 136/64 = **2.13** |
+| Our 16×4 | 18×6 = 108 | 16×4 = 64 | 108/64 = **1.69** |
+
+256 threads/wg = 8 warps sharing one SMEM tile load → 40% fewer global reads per
+output cell. But at 256² the entire domain fits in Ada's 6MB L2 — this may be invisible.
+
+### Tasks
+- [ ] **18.1** Add `--tile TX TY` CLI flag to `BENCHMARK/bench_gpu.zig` (analogous to existing `--f16`).
+  Create `pub fn gs_gpu_init_tiled(width: u32, height: u32, tile_x: u32, tile_y: u32) bool`
+  in `src/gpu/gpu.zig` — copies `gs_gpu_init` body but skips `selectBestWorkgroup` and passes
+  explicit `tile_x, tile_y` to `generateWgsl()`. Must also adapt `gs_gpu_steps` (dispatch uses
+  `g.wg_x`, `g.wg_y` — already correct since `gpu_init` writes them). Verify `zig build test`.
+  Benchmark 16×16 at ALL three scales: `zig build bench-gpu -- --tile 16 16` at 256²/500,
+  then modify WIDTH=512 STEPS=500, then WIDTH=1024 STEPS=100. 3 runs each, take median.
+  Record cells/sec and SHA-256 hash for each resolution in PERFORMANCE.md with tag "16×16 SMEM".
+- [ ] **18.2** Act on benchmark results:
+  IF 16×16 hash matches sacred `e16ed0e3...` AND 16×16 > current-best + 10% at any resolution
+  (current best = 32×2 at 256², 16×8 at 512², 16×8 at 1024²):
+    → Add `@as(u32, 16)` to CANDIDATE_TILES in `selectBestWorkgroup` (gpu.zig) and
+      `selectWorkgroup` (wasm_shader.zig). Verify sacred hash still matches at 256²
+      (auto-tuner must still select 32×2 for sacred path if 32×2 is best at 256²).
+    → Keep `gs_gpu_init_tiled` as permanent utility (useful for shape-sweep debugging).
+    → Document in PERFORMANCE.md. Write "Iter 26: Phase 18" in KNOWLEDGE.md.
+  IF 16×16 hash matches BUT ≤ baseline:
+    → Document: Ada L2 cache (6MB) absorbs tile-load savings at ≤1024²; larger tile not
+      beneficial. Mark Phase 18 complete, record finding, move to Phase 19.
+  IF 16×16 hash MISMATCHES sacred:
+    → HALT. Mark [BLOCKED: hash divergence — non-standard workgroup changes SMEM
+      layout evaluation order per Phase 14 investigation]. Revert bench_gpu.zig changes. 
+      Record finding. Move to Phase 19.
+
+### Gate
+`zig build bench-gpu -- --tile 16 16` must produce valid {cells_per_second, hash} output.
+Hash MUST match sacred `e16ed0e3...` (Phase 14 proved standard `generateWgsl()` with
+different tile dimensions can preserve hash — 16×4 did. 16×16 should too since the
+generator is the same, only constants differ).
+
+---
+
+## Phase 19: 5-Point Cardinal-Only Stencil (cuGrayScott-Style)
+
+### Goal
+cuGrayScott uses a 5-point stencil: 4 cardinal neighbors (N/S/E/W), no diagonals.
+This halves SMEM neighbor reads (8→4 neighbor fetches per cell) and simplifies
+the laplacian. Quantify exactly how much our 9-point stencil costs us in throughput.
+
+### Correctness Note
+5-point produces **different visual output** from 9-point. Patterns will differ — spot sizes,
+maze thresholds, and regime boundaries shift. This is NOT a bug — it's a different
+numerical scheme with different rotation isotropy.
+
+**Hash gate for this phase**: Verify 5-point hash is **consistent across 3 consecutive runs**
+(determinism), NOT that it matches sacred `e16ed0e3...`. Cross-stencil hashes will
+never match because neighbor values differ. Record the 5-point baseline hash from run 1
+and verify runs 2-3 produce the SAME hash.
+
+### Known Trade-off
+5-point Laplacian is less rotationally isotropic — diagonal patterns may appear
+slightly axis-aligned compared to 9-point. Visual difference per mrob.com analysis
+is subtle at Gray-Scott scales (<5% deviation in pattern morphology) but measurably
+present. Acceptable for a "turbo mode" opt-in when visual fidelity isn't critical.
+
+### Tasks
+- [ ] **19.1** Research: fetch 2-3 articles/posts on 5-point vs 9-point Laplacian accuracy
+  for reaction-diffusion. Key question: do pattern regimes (spots→maze→chaos→worms)
+  shift measurably in (F,k) parameter space? Write findings in RESEARCH_NOTES.md.
+- [ ] **19.2** Create `generateWgsl5Point(buf, w, h, tx, ty)` in `src/wgsl_gen.zig`:
+  - Remove all diagonal neighbor terms from `card_u`/`card_v` — keep only left/right
+    (`lid.x` and `lid.x+2`) and top/bottom (`lid.y` and `lid.y+2` rows)
+  - Remove diagonal corner terms from `lap_u`/`lap_v` — no `+1` column offsets in
+    diagonal reads (only `lid.x`, `lid.x+2` for horizontal, `lid.y`/`lid.y+2` for vertical)
+  - Simplified laplacian: `fma(card_u, 0.2, -u_c)` — no 0.05-weighted diagonal term
+  - Everything else IDENTICAL: SMEM tile loading (both u/v center + halos),
+    Gray-Scott reaction formula (uvv, u_next, v_next, clamp, write), FMA builtin
+  - Export via `gs_wasm_build_5point(w,h,tx,ty)` in `wasm_shader.zig`
+  - Add `gs_gpu_init_5point(width, height)` in `gpu.zig` (mirrors `gs_gpu_init` but
+    calls `generateWgsl5Point` — bypasses variant-choosing auto-tuner)
+  - Add benchmark entry to `bench_all_variants.zig`: `bench(256, 256, 500, "5point", &gpu.gs_gpu_init_5point)`
+  - Verify `zig build test` passes, `zig build wasm-shader` succeeds
+- [ ] **19.3** Benchmark 5-point at 256²/500, 512²/500, 1024²/100 (3 runs each, median,
+  with warm-up). Record hash from run 1 as **5-point deterministic baseline**. Verify
+  runs 2 and 3 produce IDENTICAL hash. If they don't → HALT, mark [BLOCKED: nondeterministic].
+  Document throughput and hash in PERFORMANCE.md with stencil column (9-pt vs 5-pt).
+- [ ] **19.4** Act on results:
+  IF 5-point > standard + 30% AND deterministic:
+    → KEEP as opt-in "turbo mode"
+    → Add `FEATURE_FAST: u32 = 8;` to `wasm_shader.zig`
+    → Wire into `gs_wasm_get_best()`: `if (features & FEATURE_FAST != 0) return buildWgsl5Point()`
+    → Document visual tradeoffs in KNOWLEDGE.md (pattern differences, regime shifts)
+    → Keep `gs_gpu_init_5point` as permanent native export for benchmark comparison
+    → Note in KNOWLEDGE.md: manual browser test via `npx serve benchmark/` needed
+      to verify 5-point hash matches native
+  IF 5-point ≤ standard + 30%:
+    → REVERT all changes (use `git reset --hard HEAD` to undo 19.2-19.3)
+    → Document: "5-point theoretically halves SMEM reads, but L2 cache absorbs the
+      savings at ≤1024² on Ada. 9-point stencil cost is smaller than theoretical max."
+    → Record in PERFORMANCE.md as "Reverted — 5-point ≤30% win."
+
+### Gate
+5-point must be deterministic (3× same hash). +30% threshold to justify permanently
+maintaining a separate variant with its own WASM export.
+
+---
+
+## Phase 20: ILP — SMEM Load/Compute Reordering
+
+### Goal
+Replicate cuGrayScott's `cp.async` benefit (WGSL has no async SMEM copy) by maximizing
+the instruction-distance between SMEM loads and their first use. The GPU warp scheduler
+hides ~200-cycle SMEM latency when enough independent instructions separate load from use.
+
+### Technique
+Current code: load-center → compute-card → load-halo → compute-lap → ...
+    (interleaved load and ALU — small load-to-use distance)
+
+Proposed:   load-center + load-halo + load-corner → barrier → indices → laplacian → reaction
+    (clustered loads → maximum load-to-use distance)
+
+Clustering all loads first maximizes the pipeline depth of in-flight load operations
+before the first dependent ALU instruction. The compiler can batch the loads,
+and the warp scheduler can overlap tail-end loads with early ALU.
+
+### Tasks
+- [ ] **20.1** Research: fetch 2-3 articles on GPU ILP, load/compute interleaving, and
+  SMEM latency hiding. Key numbers: typical SMEM load latency on Ada Lovelace (cycles?),
+  warp scheduler behavior for 2-warp workgroups. Write findings in RESEARCH_NOTES.md
+  under "Phase 20 — ILP".
+- [ ] **20.2** Create `generateWgslILP(buf, w, h, tx, ty)` in `src/wgsl_gen.zig`:
+  - Phase 1 (load cluster): All SMEM writes grouped together — center U, center V,
+    left halo U/V, right halo U/V, top halo U/V, bottom halo U/V, corner halos U/V.
+    ZERO ALU interspersed in the load group.
+  - Phase 2 (barrier): Single `workgroupBarrier()` after all loads
+  - Phase 3 (index cluster): Precompute ALL indices (`ti`, `xl/xr/yt/yb`) as a block
+  - Phase 4 (laplacian cluster): Compute `card_u`, `card_v`, `lap_u`, `lap_v` as a block
+  - Phase 5 (reaction cluster): Compute `uvv`, `u_next`, `v_next`, `clamp`, write to `u_out`/`v_out`
+  - **Arithmetic MUST be identical** to `generateWgsl()` — ONLY instruction ORDER changes.
+    Same tile indexing, same FMA calls, same constants, same boundary conditions.
+  - Export via `gs_wasm_build_ilp(w,h,tx,ty)` in `wasm_shader.zig` (optional — only if kept)
+  - Verify `zig build test` passes
+- [ ] **20.3** Benchmark at 256²/500 (3 runs, median, with warm-up). Check TWO properties:
+  (a) **Sacred hash `e16ed0e3...` MUST match** — reordering must NOT change FMA grouping
+  (b) Throughput (cells/sec) vs baseline `generateWgsl()`
+- [ ] **20.4** Act on results — follow ONE of three paths:
+  **Path A (best):** Sacred hash matches AND ILP > standard + 5%:
+    → REPLACE `generateWgsl()` body with ILP instruction order (keep function name/signature).
+    → ILP becomes the NEW standard path. Sacred hash preserved. Faster baseline.
+    → Document in PERFORMANCE.md as new standard. Write Iter in KNOWLEDGE.md.
+    → Remove `generateWgslILP` (it IS `generateWgsl` now — no duplicate needed).
+  **Path B:** Sacred hash matches BUT ILP ≤ standard:
+    → REVERT `generateWgslILP` (keep original `generateWgsl` unchanged).
+    → Document: "clustered loads didn't help — 2 warps/wg insufficient for latency
+      hiding; or SMEM read latency is NOT the bottleneck at 256²."
+  **Path C (worst):** Sacred hash MISMATCHES:
+    → REVERT immediately. Try minimal variant: ONLY precompute indices before
+      SMEM loads (leave all other instruction order identical). Re-benchmark.
+      If minimal variant also mismatches → BLOCK entire phase permanently.
+      → Document: "WGSL instruction ordering changes floating-point evaluation even
+        when arithmetic is identical. Same root cause as Phase 14 hash divergence.
+        Tint compiler SPIR-V emission context-sensitive to instruction placement."
+
+### Gate
+Sacred hash preserved (non-negotiable). +5% threshold (small because we already
+get some ILP from earlysum/interleaved — Phase 6).
+
+---
+
+## Phase 21: Subgroup Shuffle Halo (Browser-Only, Chrome 135+)
+
+### Goal
+cuGrayScott's warp-level data sharing via shared SMEM tiles can be partially replicated
+in WGSL using `subgroupShuffleUp`/`subgroupShuffleDown` for horizontal (±X) neighbor
+reads. Within a warp, neighbour lanes are accessible via register shuffle — no SMEM read
+needed. This reduces SMEM traffic for interior cells.
+
+### Architecture (16×4 workgroup)
+```
+Warp 0: threads 0-31  = X rows 0-1, each 16 columns wide
+Warp 1: threads 32-63 = X rows 2-3, each 16 columns wide
+```
+- **Horizontal neighbors (±1 X)**: `subgroupShuffleDown(u_c, 1u)` / `subgroupShuffleUp(u_c, 1u)`
+  → Works for lid.x ∈ [1,14] (interior horizontal lanes). REGISTER SPEED.
+- **Edge threads (lid.x=0, lid.x=15)**: Need left/right halo → SMEM fallback
+- **Vertical neighbors (±1 Y)**: Cross-warp (rows 0-1 vs 2-3) → SMEM (no warp-crossing shuffle)
+- **Corners**: SMEM (cross-warp + cross-lane)
+
+### Browser-Only Note
+`enable subgroups;` is **rejected by Naga** (wgpu-native WGSL frontend, tracking issue
+#5555 still open as of May 2026). Native benchmarks CANNOT test this — `zig build bench-gpu`
+will fail with Naga parser error. Dawn (Chrome 135+ WebGPU implementation) supports
+subgroups fully. **Implementation + WASM export only — marked MANUAL for browser test.**
+
+### Tasks
+- [ ] **21.1** Research warp layout within 16×4 workgroup on NVIDIA (warpSize=32, 2 warps/wg).
+  Determine exact `subgroupShuffleUp/Down` lane mapping for neighbor reads:
+  - Thread at (row y, col x): lane_id = y*16 + x within warp row-pair
+  - `subgroupShuffleDown(value, 1u)` → value from lane_id-1 → neighbor at col x-1
+  - `subgroupShuffleUp(value, 1u)` → value from lane_id+1 → neighbor at col x+1
+  Verify: this works only for horizontal within-warp (NOT vertical — different warp
+  handles rows 2-3). Write layout and access map in RESEARCH_NOTES.md.
+- [ ] **21.2** Create `generateWgslSubgroupShuffle(buf, w, h, tx, ty)` in `src/wgsl_gen.zig`:
+  - Declaration: `enable subgroups;` at top (required by WGSL spec)
+  - SMEM tile loading: SAME as standard (center U/V, all halos — needed for edge threads
+    and vertical neighbors). Do NOT skip any SMEM loads — SMEM is still needed for
+    vertical neighbours and edge fallback.
+  - After `workgroupBarrier()`:
+    - For interior (lid.x ∈ [1,14], lid.y ∈ [1, TY-2]):
+      - `u_left = subgroupShuffleDown(u_c, 1u)` ← regs, not SMEM
+      - `u_right = subgroupShuffleUp(u_c, 1u)` ← regs, not SMEM
+      - Top/bottom: read from SMEM as usual (cross-warp)
+    - For edge threads (lid.x=0 or lid.x=15 or lid.y=0 or lid.y=TY-1):
+      FULL SMEM fallback (identical to standard code path)
+  - Export via `gs_wasm_build_subgroup_shuffle(w,h,tx,ty)` in `wasm_shader.zig`
+  - Wire into `gs_wasm_get_best()`: add `coarse = 8` to VariantTag enum;
+    return this if `(features & FEATURE_SUBGROUPS) != 0` (subgroups available).
+    This replaces the CURRENT subgroup variant (which uses shuffle for ALL cells
+    including wrong ones) with the fixed version.
+  - Verify `zig build wasm-shader` compiles (WASM target, no Naga → will succeed).
+  - Verify `zig build test` passes.
+- [ ] **21.3** Attempt native benchmark: `zig build bench-gpu` (will FAIL — Naga rejects
+  `enable subgroups;` in gpu.zig native path since `gs_gpu_init` calls `generateWgsl`
+  which doesn't have `enable subgroups;` — wait, this only fails if we WIRE the subgroup
+  shader into native init path). The subgroup shader generator exists ONLY in wgsl_gen.zig
+  and wasm_shader.zig — it's NOT wired into gpu.zig native init path. Verify:
+  (a) Native benchmarks (`zig build bench-gpu`) still work (use standard path, unchanged)
+  (b) WASM module (`zig build wasm-shader`) builds and exports `gs_wasm_build_subgroup_shuffle`
+  (c) Document: "[EXPECTED: Naga blocks `enable subgroups;` — variant is browser-only.
+       Native benchmarks use standard path, unaffected.]"
+  → Mark Phase 21 as [BLOCKED: Naga — browser- only. Dawn supported.]
+  → DO NOT revert — keep WASM export for manual Chrome testing.
+- [ ] **21.4** (⚡ MANUAL: browser test). Update `benchmark/index.html` feature-detection chain
+  (line ~109): if `hasSubgroups` → call `gs_wasm_build_subgroup_shuffle(W, H, info.tile_x, info.tile_y)`
+  instead of current `gs_wasm_build_subgroups`. Build and copy WASM:
+  `zig build wasm-shader && Copy-Item zig-out\bin\gray_scott_shader.wasm -Destination benchmark\`
+  Serve: `npx serve benchmark/`. Open in Chrome 135+. Record throughput + hash.
+  ⚡ This is a MANUAL step — agent cannot automate browser testing.
+
+### Gate
+WASM module builds (`zig build wasm-shader` succeeds). Native path unaffected.
+Browser test pending manual Chrome session.
+
+---
+
+## Updated File Map
+
+| File | What lives there | Phases touching it |
+|---|---|---|
+| `src/wgsl_gen.zig` | All generateWgsl* variants | 18-21 (new variants: 5-point, ILP, subgrp-shuffle) |
+| `src/wasm_shader.zig` | WASM exports, engine selection | 18-20 (tiled init, 5-point, ILP exports) |
+| `src/gpu/gpu.zig` | Native pipeline, benchmark driver | 18-20 (gs_gpu_init_tiled, gs_gpu_init_5point, ILP) |
+| `BENCHMARK/bench_gpu.zig` | GPU benchmark harness | 18 (--tile CLI flag) |
+| `build.zig` | Build targets | (possibly bench-gpu-5point target) |
+| `benchmark/index.html` | Browser WebGPU harness | 21 (subgrp-shuffle variant in feature chain) |
+| `PERFORMANCE.md` | Results tracker | all |
+| `KNOWLEDGE.md` | Discoveries log | all |
+| `RESEARCH_NOTES.md` | Research citations | 19-21 (5-point accuracy, ILP, warp layout) |
