@@ -48,7 +48,7 @@ const SACRED_HASH_NATIVE = "e16ed0e3c29cc50b5fa2b42791f31ab00b39d488e971b5d3c601
 const SACRED_HASH_BROWSER = "8a39d2abd3999ab73c34db2476849cddf303ce389b35826850f9a700589b4a90";
 const W = 256, H = 256, STEPS = 500;
 const PARAMS_BYTES = 20;
-const NUM_RUNS = 3;
+const NUM_RUNS = 5;
 
 function setStatus(msg, isError) {
   const el = $("#status");
@@ -142,7 +142,7 @@ async function main() {
     queue.writeBuffer(paramBuf, 0, params);
 
     const mod = device.createShaderModule({code: wgslSource});
-    const pipeline = device.createComputePipeline({layout: "auto", compute: {module: mod, entryPoint: "main"}});
+    const pipeline = device.createComputePipeline({layout: "auto", compute: {module: mod, entryPoint: "main", constants: {"WIDTH": W, "HEIGHT": H}}});
     const layout = pipeline.getBindGroupLayout(0);
     const bind0 = device.createBindGroup({layout, entries: [
       {binding: 0, resource: {buffer: u0}}, {binding: 1, resource: {buffer: v0}},
