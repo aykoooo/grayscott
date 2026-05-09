@@ -208,32 +208,40 @@ Browser (Chrome/Tint) produces a **different hash** than native (Naga):
 
 This is a **known cross-implementation divergence** (Tint vs Naga SPIR-V emission). The browser hash is deterministic across all tested variants.
 
-### Multi-Run Results (3 runs × 5 sessions = 15 runs per variant)
+### Multi-Run Results (3 runs × 6 sessions = 18 runs per variant)
 
 | Variant | All Runs | Median | Mean | Min | Max |
 |---|---|---|---|---|---|
-| **Standard** | 2.48–6.97B | **4.49B** | **4.33B** | 2.48B | 6.97B |
-| **Subgroups** | 3.24–6.07B | **4.05B** | **4.14B** | 3.24B | 6.07B |
-| **Speedup** | 0.80–1.14x | **0.90x** | **0.96x** | — | — |
+| **Standard** | 2.48–6.97B | **4.49B** | **4.30B** | 2.48B | 6.97B |
+| **Subgroups** | 2.98–6.07B | **3.97B** | **4.02B** | 2.98B | 6.07B |
+| **Speedup** | 0.71–1.14x | **0.89x** | **0.93x** | — | — |
 
-### Per-Session Speedup (subgroups / standard)
+### Per-Session Medians
 
-| Session | Standard Median | Subgroups Median | Speedup |
-|---|---|---|---|
-| S1 (cold) | 4.49B | 5.12B | **1.14x** |
-| S2 | 4.82B | 3.86B | **0.80x** |
-| S3 | 4.62B | 4.20B | **0.91x** |
-| S4 | 3.60B | 3.31B | **0.92x** |
-| S5 | 4.37B | 3.90B | **0.89x** |
+| Session | Standard | Subgroups | Speedup | Weight |
+|---|---|---|---|---|
+| S1 | 4.49B | 5.12B | **1.14x** | balance (idle) |
+| S2 | 4.82B | 3.86B | **0.80x** | GPU warm |
+| S3 | 4.62B | 3.29B | **0.71x** | high variance |
+| S4 | 3.60B | 3.31B | **0.92x** | throttled |
+| S5 | 4.37B | 3.90B | **0.89x** | throttled |
+| S6 | 4.62B | 3.29B | **0.71x** | throttled |
+
+**Weighted analysis: >1x speedup only in S1 (1/6 sessions = 17% of time). Subgroups is slower in 83% of sessions.**
 
 ### Analysis
 
-1. **Subgroup variant is NOT consistently faster**. The only "win" (1.14x) was Session 1 where standard had a cold pipeline compile. After shader caching, subgroups is **~10-20% slower**.
-2. **Standard variant is the winner** in browser (median 4.49B, mean 4.33B)
-3. **Browser (Tint) is ~3× faster than native (Naga)** for this workload: 4.49B browser vs ~1.4B native
-4. **Hash divergence between Tint/Naga is deterministic and stable** — each platform needs its own sacred hash
-5. **Never benchmark integrated graphics** for this workload
+1. **Subgroup variant is NOT consistently faster**. The only "win" (1.14x) was Session 1 where standard had a cold pipeline compile or thermal boost. After warming, subgroups is **~10-30% slower**.
+2. **Standard variant is the winner** in browser (median 4.49B, mean 4.30B)
+3. **Browser (Tint) is still ~3× faster than native (Naga)** for this workload: 4.49B browser vs ~1.4B native
+4. **Hash divergence between Tint/Naga is deterministic** — browser sacred = `8a39d2ab...`
+5. **Thermal throttling causes extreme variance** across sessions — 6× range (2.5–6.9B) on the same hardware
 
 ### Phase 21 Conclusion
 
-Subgroup shuffle variant is **not worth the complexity** in Chrome/NVIDIA path. Standard tiling shader is simpler, faster, and produces the same deterministic hash. The subgroup variant remains in WASM exports for future hardware but is NOT recommended for Chrome/NVIDIA RTX 4060.
+Subgroup shuffle variant is **not worth the complexity** in Chrome/NVIDIA path.
+- Standard tiling: 4.49B median (18 runs)
+- Subgroup shuffle: 3.97B median (18 runs)
+- Speedup: **0.89x** (11% regression)
+
+Standard shader is simpler, faster, and produces the same deterministic hash. Subgroup variant kept in WASM exports for future hardware but NOT recommended for Chrome/NVIDIA RTX 4060.
