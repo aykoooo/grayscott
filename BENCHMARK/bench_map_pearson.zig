@@ -1,6 +1,15 @@
 const std = @import("std");
 const gpu = @import("gray_scott_gpu");
 
+const MapHeader = extern struct {
+    width: u32,
+    height: u32,
+    f_min: f32,
+    f_max: f32,
+    k_min: f32,
+    k_max: f32,
+};
+
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
@@ -85,10 +94,23 @@ pub fn main() !void {
 
     std.debug.print("Done: {d:.1}s ({d}B cells -> {d} cells/sec)\n", .{ total_s, @as(u64, @intFromFloat(total_cells)) / 1_000_000_000, rate });
 
-    // Write raw u8 binary (V-channel, 0-255)
+    // Write binary: 24-byte header + raw u8 pixel data
     const bin_file = try std.fs.cwd().createFile(output_bin, .{});
     defer bin_file.close();
 
+    const header = MapHeader{
+        .width = w,
+        .height = h,
+        .f_min = f_min,
+        .f_max = f_max,
+        .k_min = k_min,
+        .k_max = k_max,
+    };
+    // Write header as raw bytes (assumes little-endian, safe for x86+WASM+ARM)
+    const header_bytes: [@sizeOf(MapHeader)]u8 = @bitCast(header);
+    try bin_file.writeAll(&header_bytes);
+
+    // Write pixel data (V-channel, 0-255)
     const v_floats = @as([*]const f32, @ptrCast(@alignCast(v_back.ptr)))[0 .. w * h];
     const bin_buf = try allocator.alloc(u8, w * h);
     defer allocator.free(bin_buf);
@@ -97,17 +119,5 @@ pub fn main() !void {
     }
     try bin_file.writeAll(bin_buf);
     const bin_size = try bin_file.getEndPos();
-    std.debug.print("Saved: {s} ({d} bytes)\n", .{ output_bin, bin_size });
-
-    // Write sidecar JSON with metadata
-    const json_path = try std.fmt.allocPrint(allocator, "{s}.json", .{output_bin});
-    defer allocator.free(json_path);
-    const json_file = try std.fs.cwd().createFile(json_path, .{});
-    defer json_file.close();
-    const json_content = try std.fmt.allocPrint(allocator,
-        \\{{"width":{d},"height":{d},"f_min":{d},"f_max":{d},"k_min":{d},"k_max":{d},"iterations":{d},"channel":"V"}}
-    , .{ w, h, f_min, f_max, k_min, k_max, iterations });
-    defer allocator.free(json_content);
-    try json_file.writeAll(json_content);
-    std.debug.print("Saved: {s}\n", .{json_path});
+    std.debug.print("Saved: {s} ({d} bytes = 24 header + {d} pixels)\n", .{ output_bin, bin_size, w * h });
 }
