@@ -263,3 +263,12 @@ Replaced `const WIDTH: u32 = {d}u; const HEIGHT: u32 = {d}u;` with `override WID
 - `src/wgsl_gen.zig`: `generateWgsl()` now emits `override` instead of `const`; removed `w,h` params
 - `src/gpu/gpu.zig`: `gs_gpu_init()` passes `WGPUConstantEntry` for WIDTH/HEIGHT
 - `benchmark/index.html`: `createComputePipeline` passes `constants: {WIDTH, HEIGHT}`
+
+### Phase 16 Browser Multi-Run (8 sessions, 24 runs)
+
+| Variant | Median | Mean | Speedup |
+|---|---|---|---|
+| **Standard** | **4.29B** | **4.33B** | baseline |
+| **Subgroups** | **3.29B** | **3.67B** | **0.77x** |
+
+Browser sacred hash `8a39d2ab...` preserved across all runs. Override constants work identically in Chrome/Dawn as in native/Naga. Subgroup variant continues to show ~23% regression in multi-run testing.
