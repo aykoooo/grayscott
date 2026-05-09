@@ -16,7 +16,6 @@
   .loser { color: #f44336; }
   .metric { color: #64b5f6; }
   #status { padding: 8px 12px; border-radius: 4px; background: #1a1a2e; font-size: 0.85em; margin: 12px 0; min-height: 1.2em; }
-  canvas { position: absolute; left: -9999px; top: -9999px; opacity: 0.01; }
 </style>
 </head>
 <body>
@@ -24,7 +23,6 @@
 <p style="font-size:0.85em; color:#888;">256&sup2;, 500 steps, periodic boundaries, da=1.0 db=0.5 dt=1.0 F=0.0545 K=0.062</p>
 <div id="status">Starting...</div>
 <div id="results"></div>
-<canvas id="gl"></canvas>
 
 <script>
 const $ = s => document.querySelector(s);
@@ -56,9 +54,8 @@ function formatTable(runs, hash, medianCps) {
 
 // ======== WebGL Benchmark ========
 async function benchWebGL() {
-  setStatus("WebGL: creating context...");
-  const canvas = $("#gl");
-  canvas.width = W; canvas.height = H;
+  setStatus("WebGL: creating OffscreenCanvas...");
+  const canvas = new OffscreenCanvas(W, H);
   const gl = canvas.getContext("webgl", { preserveDrawingBuffer: false, antialias: false });
   if (!gl) { setStatus("WebGL: NOT AVAILABLE"); return null; }
   if (!gl.getExtension("OES_texture_float")) { setStatus("WebGL: OES_texture_float MISSING"); return null; }
