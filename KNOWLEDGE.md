@@ -305,11 +305,11 @@ function onChangeResolution(newW, newH) {
 
 ### Browser Subgroups Result (Chrome 148, NVIDIA RTX 4060)
 
-- Standard: median **3.4B cells/sec** (3 runs)
-- Subgroups: median **4.4–7.3B cells/sec** depending on run variance
-- Peak observed: **10.6B cells/sec**
-- Subgroup speedup: **1.9–3.0x** vs standard
-- Target 6.8B **exceeded at peak**
+- Standard: median **4.49B cells/sec** (15 runs across 5 sessions) — winner
+- Subgroups: median **4.05B cells/sec** (15 runs across 5 sessions) — ~10% slower
+- Subgroup speedup: **0.90x median**, range 0.80–1.14x (only "won" in session 1 due to cold pipeline compile)
+- **Subgroup variant NOT worth complexity** for Chrome/NVIDIA
+- **Standard variant remains recommended** for browser path
 
 ### Multi-Run Benchmark Page
 
@@ -319,3 +319,4 @@ Updated `benchmark/index.html` with:
 - Median calculation per variant
 - Speedup ratio between subgroups and standard
 - 200ms cooldown between runs to reduce scheduling variance
+- Key finding: first-run variance is extreme (compile-time effects), multi-run is essential
