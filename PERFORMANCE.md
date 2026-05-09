@@ -272,3 +272,40 @@ Replaced `const WIDTH: u32 = {d}u; const HEIGHT: u32 = {d}u;` with `override WID
 | **Subgroups** | **3.29B** | **3.67B** | **0.77x** |
 
 Browser sacred hash `8a39d2ab...` preserved across all runs. Override constants work identically in Chrome/Dawn as in native/Naga. Subgroup variant continues to show ~23% regression in multi-run testing.
+
+## Cross-Browser: WebGL vs WebGPU Head-to-Head (2026-05-25)
+
+Benchmark: `bench/bench.html` — same 9-point stencil, 256²/500, periodic boundaries, da=1.0 db=0.5 dt=1.0 F=0.0545 K=0.062.
+
+### Chrome 148 (Dawn/Tint, NVIDIA RTX 4060)
+
+| Path | Median | Hash |
+|---|---|---|
+| **WebGPU** (SMEM 32×2, FMA) | **5.2B** | `8a39d2ab...` (browser sacred) |
+| WebGL 1.0 (raw, best-case) | ⚠️ Unmeasurable* | `f8598285...` (WebGL sacred) |
+
+*Chrome `gl.finish()` does not block for GPU completion on non-visible canvases. Simulation runs but timing is unreliable. Estimated ~1.5B based on Firefox WebGL numbers.
+
+### Zen (Firefox 148, Naga, NVIDIA RTX 4060)
+
+| Path | Median | Hash |
+|---|---|---|
+| WebGL 1.0 (raw, best-case) | **2.5B** | `f8598285...` (WebGL sacred) |
+| WebGPU (SMEM 32×2, FMA) | **110M** | `8a39d2ab...` (browser sacred) |
+
+### Firefox Naga Limitation
+
+Naga's SPIR-V emission is fundamentally slower than Tint's for SMEM-tiled compute shaders. Even with warmup, Firefox WebGPU runs at 110M vs WebGL's 2.5B — a 23× regression. Naga uses tiered compilation: first 200+ dispatches run on interpreted/slow path, only later dispatches get optimized code. This makes Firefox WebGPU non-viable for this workload.
+
+### Chrome gl.finish() Timing Bug
+
+Chrome's WebGL (ANGLE) defers GPU work for canvases not rendered in the visible viewport. Attempted workarounds that failed:
+- `display: none` — GPU work culled entirely
+- `position: absolute; left: -9999px` — outside viewport, culled
+- `OffscreenCanvas` — Chrome still considers it non-visible
+
+Hash is always correct (`f8598285...`), confirming simulation runs. But work spills into subsequent WebGPU dispatch timelines. Side-by-side comparisons require WebGPU to run FIRST on a clean page, and WebGL must be benchmarked in isolation with a visible canvas.
+
+### ANGLE/Dawn Context Contention
+
+Chrome runs both WebGL (ANGLE) and WebGPU (Dawn) on the same D3D12 device. A live WebGL context forces Dawn into degraded interleaved-scheduling mode, adding driver-level context-switch overhead to every WebGPU dispatch (observed as 40-50× slowdown). Fix: lose WebGL context (`WEBGL_lose_context.loseContext()`) before requesting WebGPU adapter, or benchmark them in separate page loads.

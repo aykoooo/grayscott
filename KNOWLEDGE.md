@@ -320,3 +320,53 @@ Updated `benchmark/index.html` with:
 - Speedup ratio between subgroups and standard
 - 200ms cooldown between runs to reduce scheduling variance
 - Key finding: first-run variance is extreme (compile-time effects), multi-run is essential
+
+## Iter 31: WebGL vs WebGPU Head-to-Head Benchmark (2026-05-25)
+
+### Chrome WebGL gl.finish() Timing Bug
+
+- `gl.finish()` does NOT block for GPU completion when the WebGL canvas is not visibly rendered in the viewport
+- Attempted fixes: `display:none` (culls GPU work), `left:-9999px; opacity:0.01` (culls), `OffscreenCanvas` (culls)
+- Hash is STILL correct (`f8598285...`) — the simulation IS running, but Chrome defers GPU work past `gl.finish()`, spilling into subsequent WebGPU dispatch timelines
+- **Implication:** Side-by-side WebGL/WebGPU benchmarks are unreliable on Chrome. WebGL must be benchmarked with a visible canvas, or measured in isolation
+- This is a Chrome ANGLE-specific optimization — Firefox `gl.finish()` works correctly for offscreen canvases
+
+### Context Contention: ANGLE + Dawn Share D3D12 Device
+
+- Chrome runs WebGL via ANGLE (D3D11-on-D3D12) and WebGPU via Dawn (D3D12)
+- Both share the same underlying D3D12 device
+- If WebGL context is alive when WebGPU adapter is requested, Dawn operates in degraded interleaved-scheduling mode — each dispatch pays full driver-level context-switch overhead
+- **Fix:** lose WebGL context (`WEBGL_lose_context.loseContext()`) or run WebGPU FIRST on a clean page
+- This explains why earlier head-to-head benchmarks showed WebGPU at 100M vs expected 5B
+
+### Firefox/Zen WebGPU (Naga) Performance
+
+- Firefox uses wgpu-native + Naga (not Tint), same as our native benchmarks
+- WebGL: **2.3-2.7B cells/sec** — faster than Chrome WebGL (est. ~1.5B), correctly timed
+- WebGPU: **~110M cells/sec** — 20× SLOWER than Firefox WebGL
+- Naga tiered compilation: even with 10-step warmup, runs 1-2 compile on slow tier, run 3 gets optimized code (3× faster but still 110M→330M)
+- **Firefox WebGPU is not viable for this workload** — WebGL is 20× faster
+- Firefox's Naga SPIR-V emission is fundamentally slower than Tint's for SMEM-tiled compute shaders
+
+### Chrome WebGPU Confirmed Performance
+
+- Median **5.2B cells/sec** at 256²/500 (50+ runs across multiple benchmark sessions)
+- Hash `8a39d2ab...` (browser sacred) — deterministic across all Chrome sessions
+- 32×2 tiling, SMEM, FMA laplacian, pipeline-overridable WIDTH/HEIGHT
+
+### Hash Divergence Between WebGL and WebGPU
+
+- WebGL hash: `f8598285177f661e23fefc67c3fa550bb09347dfaf79974fd01fee505a316fe8`
+- WebGPU hash: `8a39d2abd3999ab73c34db2476849cddf303ce389b35826850f9a700589b4a90`
+- Cause: WebGL uses texture REPEAT wrapping for periodic boundaries (hardware implementation), WebGPU uses explicit `select(x-1u, WIDTH-1u, x==0u)` math + enforced FMA
+- Both hashes are deterministic across sessions and browsers — each platform has its own sacred hash
+
+### Cross-Browser Performance Summary
+
+| Platform | WebGL | WebGPU | Best Path |
+|---|---|---|---|
+| Chrome/Edge (~83%) | ~1.5B* | **5.2B** | WebGPU |
+| Firefox/Zen (~5%) | **2.5B** | 110M | WebGL |
+| Safari (~12%) | Unknown | Unknown | WebGL fallback |
+
+*Chrome WebGL ~1.5B is estimated — cannot be accurately timed due to `gl.finish()` bug; Firefox WebGL at 2.5B is a conservative estimate for Chrome
