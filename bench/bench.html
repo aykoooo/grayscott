@@ -16,7 +16,7 @@
   .loser { color: #f44336; }
   .metric { color: #64b5f6; }
   #status { padding: 8px 12px; border-radius: 4px; background: #1a1a2e; font-size: 0.85em; margin: 12px 0; min-height: 1.2em; }
-  canvas { display: none; }
+  canvas { position: absolute; left: -9999px; top: -9999px; opacity: 0.01; }
 </style>
 </head>
 <body>
@@ -196,7 +196,7 @@ async function benchWebGPU() {
   const pipeline=device.createComputePipeline({layout:"auto",compute:{module:mod,entryPoint:"main",constants:{"WIDTH":W,"HEIGHT":H}}});
   const layout=pipeline.getBindGroupLayout(0);
 
-  // Warmup: create temp buffers, run 1 step to finish shader compilation
+  // Warmup: 10 steps to force shader compilation on both Chrome and Firefox
   setStatus("WebGPU: warmup (compiling shader on GPU)...");
   {
     const wu=device.createBuffer({size:bufSize,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST});
@@ -206,9 +206,9 @@ async function benchWebGPU() {
     device.queue.writeBuffer(wp,0,new Float32Array([DA,DB,DT,FEED,KILL]));
     const bg=device.createBindGroup({layout,entries:[{binding:0,resource:{buffer:wu}},{binding:1,resource:{buffer:wv}},{binding:2,resource:{buffer:wu}},{binding:3,resource:{buffer:wv}},{binding:4,resource:{buffer:wp}}]});
     const enc=device.createCommandEncoder();
-    { const pass=enc.beginComputePass(); pass.setPipeline(pipeline); pass.setBindGroup(0,bg); pass.dispatchWorkgroups(dx,dy,1); pass.end(); }
+    for (let w=0;w<10;w++) { const pass=enc.beginComputePass(); pass.setPipeline(pipeline); pass.setBindGroup(0,bg); pass.dispatchWorkgroups(dx,dy,1); pass.end(); }
     device.queue.submit([enc.finish()]);
-    await device.queue.onSubmittedWorkDone(); // blocks until compile + 1 step done
+    await device.queue.onSubmittedWorkDone();
     wu.destroy(); wv.destroy(); wp.destroy();
   }
 
