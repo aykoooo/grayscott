@@ -42,7 +42,8 @@ var g_buf: [16384]u8 = undefined;
 var g_init_info: InitInfo = undefined;
 
 fn buildWgsl(width: u32, height: u32, tile_x: u32, tile_y: u32) BufResult {
-    const result = wgsl.generateWgsl(&g_buf, width, height, tile_x, tile_y) catch return .{ .ptr = &g_buf, .len = 0 };
+    _ = width; _ = height;
+    const result = wgsl.generateWgsl(&g_buf, tile_x, tile_y) catch return .{ .ptr = &g_buf, .len = 0 };
     return .{ .ptr = &g_buf, .len = @intCast(result.len) };
 }
 

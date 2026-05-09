@@ -245,3 +245,21 @@ Subgroup shuffle variant is **not worth the complexity** in Chrome/NVIDIA path.
 - Speedup: **0.89x** (11% regression)
 
 Standard shader is simpler, faster, and produces the same deterministic hash. Subgroup variant kept in WASM exports for future hardware but NOT recommended for Chrome/NVIDIA RTX 4060.
+
+## Phase 16: Pipeline Specialization Constants (2026-05-25)
+
+Replaced `const WIDTH: u32 = {d}u; const HEIGHT: u32 = {d}u;` with `override WIDTH: u32; override HEIGHT: u32;` in the standard WGSL template. WIDTH/HEIGHT values are now passed via `WGPUConstantEntry` (native) or `constants: {}` (browser JS) at pipeline creation time.
+
+| Run | Cells/sec | Hash |
+|---|---|---|
+| 1 (cold) | 584M | `e16ed0e3...` |
+| 2 | 775M | `e16ed0e3...` |
+| 3 | 795M | `e16ed0e3...` |
+| **Median** | **775M** | — |
+
+**Finding:** Sacred hash preserved. Performance neutral (within thermal variance). Phase 16 kept — removes WIDTH/HEIGHT from WGSL string, enables future shader module reuse for different resolutions without recompilation. No measurable performance gain but zero regression.
+
+**Changes:**
+- `src/wgsl_gen.zig`: `generateWgsl()` now emits `override` instead of `const`; removed `w,h` params
+- `src/gpu/gpu.zig`: `gs_gpu_init()` passes `WGPUConstantEntry` for WIDTH/HEIGHT
+- `benchmark/index.html`: `createComputePipeline` passes `constants: {WIDTH, HEIGHT}`

@@ -1,6 +1,6 @@
 const std = @import("std");
 
-pub fn generateWgsl(buf: []u8, w: u32, h: u32, tile_x: u32, tile_y: u32) ![]const u8 {
+pub fn generateWgsl(buf: []u8, tile_x: u32, tile_y: u32) ![]const u8 {
     const stride: u32 = tile_x + 2;
     const rows: u32 = tile_y + 2;
     const tile_n: u32 = stride * rows;
@@ -17,8 +17,8 @@ pub fn generateWgsl(buf: []u8, w: u32, h: u32, tile_x: u32, tile_y: u32) ![]cons
         \\@group(0) @binding(2) var<storage, read_write> u_out: array<f32>;
         \\@group(0) @binding(3) var<storage, read_write> v_out: array<f32>;
         \\@group(0) @binding(4) var<uniform> params: Params;
-        \\const WIDTH: u32 = {d}u;
-        \\const HEIGHT: u32 = {d}u;
+        \\override WIDTH: u32;
+        \\override HEIGHT: u32;
         \\const TX: u32 = {d}u;
         \\const TY: u32 = {d}u;
         \\const STRIDE: u32 = {d}u;
@@ -89,7 +89,7 @@ pub fn generateWgsl(buf: []u8, w: u32, h: u32, tile_x: u32, tile_y: u32) ![]cons
         \\    u_out[out_idx] = clamp(u_next, 0.0, 1.0);
         \\    v_out[out_idx] = clamp(v_next, 0.0, 1.0);
         \\}}
-    , .{ w, h, tile_x, tile_y, stride, tile_n, tile_n, tile_x, tile_y });
+    , .{ tile_x, tile_y, stride, tile_n, tile_n, tile_x, tile_y });
 }
 
 pub fn generateWgslVec2(buf: []u8, w: u32, h: u32, tile_x: u32, tile_y: u32) ![]const u8 {

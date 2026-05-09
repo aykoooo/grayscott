@@ -259,7 +259,7 @@ fn makeBglEntry(binding: u32, ty: c.WGPUBufferBindingType) c.WGPUBindGroupLayout
 // WGSL shader generation (runtime width/height substitution)
 // =============================================================================
 
-fn generateWgsl(buf: []u8, w: u32, h: u32, tile_x: u32, tile_y: u32) ![]const u8 {
+fn generateWgsl(buf: []u8, tile_x: u32, tile_y: u32) ![]const u8 {
     const stride: u32 = tile_x + 2;
     const rows: u32 = tile_y + 2;
     const tile_n: u32 = stride * rows;
@@ -276,8 +276,8 @@ fn generateWgsl(buf: []u8, w: u32, h: u32, tile_x: u32, tile_y: u32) ![]const u8
         \\@group(0) @binding(2) var<storage, read_write> u_out: array<f32>;
         \\@group(0) @binding(3) var<storage, read_write> v_out: array<f32>;
         \\@group(0) @binding(4) var<uniform> params: Params;
-        \\const WIDTH: u32 = {d}u;
-        \\const HEIGHT: u32 = {d}u;
+        \\override WIDTH: u32;
+        \\override HEIGHT: u32;
         \\const TX: u32 = {d}u;
         \\const TY: u32 = {d}u;
         \\const STRIDE: u32 = {d}u;
@@ -348,7 +348,7 @@ fn generateWgsl(buf: []u8, w: u32, h: u32, tile_x: u32, tile_y: u32) ![]const u8
         \\    u_out[out_idx] = clamp(u_next, 0.0, 1.0);
         \\    v_out[out_idx] = clamp(v_next, 0.0, 1.0);
         \\}}
-    , .{ w, h, tile_x, tile_y, stride, tile_n, tile_n, tile_x, tile_y });
+    , .{ tile_x, tile_y, stride, tile_n, tile_n, tile_x, tile_y });
 }
 
 fn generateWgslPearson(buf: []u8, w: u32, h: u32, tile_x: u32, tile_y: u32) ![]const u8 {
@@ -717,7 +717,7 @@ pub export fn gs_gpu_init(width: u32, height: u32) bool {
     const wgsl_src = if (g.shader_flags & SHADER_VEC2_SMEM != 0)
         generateWgslVec2(&wgsl_buf, width, height, g.wg_x, g.wg_y) catch return false
     else
-        generateWgsl(&wgsl_buf, width, height, g.wg_x, g.wg_y) catch return false;
+        generateWgsl(&wgsl_buf, g.wg_x, g.wg_y) catch return false;
 
     var shader_source: c.WGPUShaderSourceWGSL = undefined;
     shader_source.chain.next = null;
@@ -810,12 +810,17 @@ pub export fn gs_gpu_init(width: u32, height: u32) bool {
     if (g.pipeline_layout == null) return false;
 
     // ---- Compute pipeline ----
+    const use_override = g.shader_flags & SHADER_VEC2_SMEM == 0;
+    const constant_entries = [_]c.WGPUConstantEntry{
+        .{ .nextInChain = null, .key = cstrv("WIDTH"), .value = @floatFromInt(g.width) },
+        .{ .nextInChain = null, .key = cstrv("HEIGHT"), .value = @floatFromInt(g.height) },
+    };
     const cs: c.WGPUComputeState = .{
         .nextInChain = null,
         .module = g.shader_module,
         .entryPoint = cstrv("main"),
-        .constantCount = 0,
-        .constants = null,
+        .constantCount = if (use_override) constant_entries.len else 0,
+        .constants = if (use_override) &constant_entries else null,
     };
     const cp_desc: c.WGPUComputePipelineDescriptor = .{
         .nextInChain = null,
