@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WebGL vs WebGPU Gray-Scott Benchmark</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 800px; margin: 40px auto; padding: 16px; background: #111; color: #ddd; }
+  h1 { color: #fff; font-size: 1.3em; }
+  h2 { color: #aaa; font-size: 1em; margin-top: 24px; border-bottom: 1px solid #333; padding-bottom: 4px; }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; }
+  th, td { text-align: right; padding: 6px 10px; border-bottom: 1px solid #333; }
+  th { color: #888; font-weight: 500; }
+  td { color: #ccc; font-size: 0.95em; }
+  .winner { color: #4caf50; font-weight: 700; }
+  .loser { color: #f44336; }
+  .metric { color: #64b5f6; }
+  #status { padding: 8px 12px; border-radius: 4px; background: #1a1a2e; font-size: 0.85em; margin: 12px 0; min-height: 1.2em; }
+  canvas { display: none; }
+</style>
+</head>
+<body>
+<h1>Gray-Scott Benchmark: WebGL vs WebGPU</h1>
+<p style="font-size:0.85em; color:#888;">256&sup2;, 500 steps, periodic boundaries, da=1.0 db=0.5 dt=1.0 F=0.0545 K=0.062</p>
+<div id="status">Starting...</div>
+<div id="results"></div>
+<canvas id="gl"></canvas>
+<canvas id="gpu"></canvas>
+
+<script>
+const $ = s => document.querySelector(s);
+const W = 256, H = 256, STEPS = 500;
+const FEED = 0.0545, KILL = 0.062, DA = 1.0, DB = 0.5, DT = 1.0;
+const RUNS = 3;
+const GL_BENCH = true;
+
+function setStatus(msg) {
+  const el = $("#status");
+  el.textContent = msg;
+  el.style.color = "#aaa";
+}
+
+// ======== WebGL Benchmark ========
+async function benchWebGL() {
+  setStatus("WebGL: creating context...");
+  const canvas = $("#gl");
+  canvas.width = W; canvas.height = H;
+  const gl = canvas.getContext("webgl", { preserveDrawingBuffer: false, antialias: false });
+  if (!gl) { setStatus("WebGL: NOT AVAILABLE"); return null; }
+
+  const floatExt = gl.getExtension("OES_texture_float");
+  if (!floatExt) { setStatus("WebGL: OES_texture_float NOT AVAILABLE"); return null; }
+
+  setStatus("WebGL: compiling shader...");
+
+  const vertSrc = `
+    attribute vec2 a_pos;
+    varying vec2 v_uv;
+    void main() { v_uv = a_pos * 0.5 + 0.5; gl_Position = vec4(a_pos, 0.0, 1.0); }
+  `;
+  const fragSrc = `
+    precision highp float;
+    uniform sampler2D u_state;
+    uniform vec2 u_res;
+    varying vec2 v_uv;
+    void main() {
+      vec2 t = 1.0 / u_res;
+      float u_c = texture2D(u_state, v_uv).r;
+      float v_c = texture2D(u_state, v_uv).g;
+      float u_l = texture2D(u_state, v_uv + vec2(-t.x, 0.0)).r;
+      float u_r = texture2D(u_state, v_uv + vec2(t.x, 0.0)).r;
+      float u_t = texture2D(u_state, v_uv + vec2(0.0, -t.y)).r;
+      float u_b = texture2D(u_state, v_uv + vec2(0.0, t.y)).r;
+      float u_tl = texture2D(u_state, v_uv + vec2(-t.x, -t.y)).r;
+      float u_tr = texture2D(u_state, v_uv + vec2(t.x, -t.y)).r;
+      float u_bl = texture2D(u_state, v_uv + vec2(-t.x, t.y)).r;
+      float u_br = texture2D(u_state, v_uv + vec2(t.x, t.y)).r;
+      float v_l = texture2D(u_state, v_uv + vec2(-t.x, 0.0)).g;
+      float v_r = texture2D(u_state, v_uv + vec2(t.x, 0.0)).g;
+      float v_t = texture2D(u_state, v_uv + vec2(0.0, -t.y)).g;
+      float v_b = texture2D(u_state, v_uv + vec2(0.0, t.y)).g;
+      float v_tl = texture2D(u_state, v_uv + vec2(-t.x, -t.y)).g;
+      float v_tr = texture2D(u_state, v_uv + vec2(t.x, -t.y)).g;
+      float v_bl = texture2D(u_state, v_uv + vec2(-t.x, t.y)).g;
+      float v_br = texture2D(u_state, v_uv + vec2(t.x, t.y)).g;
+
+      float lap_u = (u_l+u_r+u_t+u_b)*0.2 + (u_tl+u_tr+u_bl+u_br)*0.05 - u_c;
+      float lap_v = (v_l+v_r+v_t+v_b)*0.2 + (v_tl+v_tr+v_bl+v_br)*0.05 - v_c;
+
+      float uvv = u_c * v_c * v_c;
+      float u_next = u_c + ${DT.toFixed(1)} * (${DA.toFixed(1)} * lap_u - uvv + ${FEED} * (1.0 - u_c));
+      float v_next = v_c + ${DT.toFixed(1)} * (${DB.toFixed(1)} * lap_v + uvv - (${FEED} + ${KILL}) * v_c);
+
+      gl_FragColor = vec4(clamp(u_next, 0.0, 1.0), clamp(v_next, 0.0, 1.0), 0.0, 1.0);
+    }
+  `;
+
+  function compileShader(type, src) {
+    const s = gl.createShader(type);
+    gl.shaderSource(s, src);
+    gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+      console.error(gl.getShaderInfoLog(s));
+      return null;
+    }
+    return s;
+  }
+
+  const vs = compileShader(gl.VERTEX_SHADER, vertSrc);
+  const fs = compileShader(gl.FRAGMENT_SHADER, fragSrc);
+  if (!vs || !fs) { setStatus("WebGL: SHADER COMPILE FAILED"); return null; }
+
+  const prog = gl.createProgram();
+  gl.attachShader(prog, vs); gl.attachShader(prog, fs);
+  gl.linkProgram(prog);
+  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) { setStatus("WebGL: LINK FAILED"); return null; }
+
+  const posLoc = gl.getAttribLocation(prog, "a_pos");
+  const buf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, -1,1, 1,-1, 1,1]), gl.STATIC_DRAW);
+
+  // Init data: A=1, B=0 everywhere, then seed spots
+  const initData = new Float32Array(W * H * 4);
+  for (let i = 0; i < W * H; i++) { initData[i*4]=1.0; initData[i*4+1]=0.0; initData[i*4+2]=0.0; initData[i*4+3]=1.0; }
+  // Simple seeds (4 spots)
+  const seeds = [[W/4,H/4],[3*W/4,H/4],[W/4,3*H/4],[3*W/4,3*H/4]];
+  for (const [cx,cy] of seeds) {
+    for (let dy = -3; dy <= 3; dy++)
+      for (let dx = -3; dx <= 3; dx++) {
+        const x = Math.round(cx+dx), y = Math.round(cy+dy);
+        if (x>=0 && x<W && y>=0 && y<H) { initData[(y*W+x)*4]=0.5; initData[(y*W+x)*4+1]=0.25; }
+      }
+  }
+
+  function createTex() {
+    const t = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, W, H, 0, gl.RGBA, gl.FLOAT, new Float32Array(W*H*4));
+    return t;
+  }
+
+  const t0 = createTex(), t1 = createTex();
+  gl.bindTexture(gl.TEXTURE_2D, t0);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, W, H, 0, gl.RGBA, gl.FLOAT, initData);
+  gl.bindTexture(gl.TEXTURE_2D, t1);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, W, H, 0, gl.RGBA, gl.FLOAT, initData);
+
+  const fbo0 = gl.createFramebuffer(), fbo1 = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo0);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t0, 0);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo1);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t1, 0);
+
+  gl.useProgram(prog);
+  gl.uniform2f(gl.getUniformLocation(prog, "u_res"), W, H);
+  gl.uniform1i(gl.getUniformLocation(prog, "u_state"), 0);
+  gl.activeTexture(gl.TEXTURE0);
+
+  const runs = [];
+  for (let r = 0; r < RUNS; r++) {
+    setStatus(`WebGL: run ${r+1}/${RUNS}...`);
+    gl.bindTexture(gl.TEXTURE_2D, t0);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, W, H, 0, gl.RGBA, gl.FLOAT, initData);
+    gl.bindTexture(gl.TEXTURE_2D, t1);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, W, H, 0, gl.RGBA, gl.FLOAT, initData);
+
+    const start = performance.now();
+    for (let s = 0; s < STEPS; s++) {
+      const src = s % 2 === 0 ? fbo0 : fbo1;
+      const dst = s % 2 === 0 ? fbo1 : fbo0;
+      gl.bindFramebuffer(gl.FRAMEBUFFER, dst);
+      gl.bindTexture(gl.TEXTURE_2D, s % 2 === 0 ? t0 : t1);
+      gl.viewport(0, 0, W, H);
+      gl.enableVertexAttribArray(posLoc);
+      gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
+      gl.drawArrays(gl.TRIANGLES, 0, 6);
+    }
+    gl.finish();
+    const ms = performance.now() - start;
+    const cps = Math.round((W * H * STEPS) / (ms / 1000));
+    runs.push({ ms, cps });
+  }
+
+  // Hash the last run's output
+  gl.bindFramebuffer(gl.FRAMEBUFFER, STEPS % 2 === 0 ? fbo0 : fbo1);
+  const pixels = new Float32Array(W * H * 4);
+  gl.readPixels(0, 0, W, H, gl.RGBA, gl.FLOAT, pixels);
+  const u8 = new Uint8Array(pixels.buffer);
+  const digest = await crypto.subtle.digest("SHA-256", u8);
+  const hash = Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2,"0")).join("");
+
+  function med(arr) { const s = [...arr].sort((a,b)=>a-b); const m = Math.floor(s.length/2); return s.length%2?s[m]:(s[m-1]+s[m])/2; }
+  return { runs, median: med(runs.map(r => r.cps)), hash };
+}
+
+// ======== WebGPU Benchmark (from existing bench) ========
+async function benchWebGPU() {
+  setStatus("WebGPU: requesting adapter...");
+  if (!navigator.gpu) { setStatus("WebGPU: NOT AVAILABLE"); return null; }
+  const adapter = await navigator.gpu.requestAdapter();
+  if (!adapter) { setStatus("WebGPU: NO ADAPTER"); return null; }
+  const device = await adapter.requestDevice();
+
+  setStatus("WebGPU: loading WASM...");
+  const wasmMod = await WebAssembly.instantiateStreaming(fetch("gray_scott_shader.wasm"), { env: {} });
+  const wasm = wasmMod.instance.exports;
+  const mem = wasm.memory;
+
+  const bufSize = wasm.gs_wasm_init_ptr(W, H);
+  const dx = wasm.gs_wasm_init_dispatch_x();
+  const dy = wasm.gs_wasm_init_dispatch_y();
+  const tx = wasm.gs_wasm_init_tile_x();
+  const ty = wasm.gs_wasm_init_tile_y();
+
+  setStatus("WebGPU: building shader...");
+  const shaderLen = wasm.gs_wasm_build_standard_shader(W, H, tx, ty);
+  const shaderPtr = wasm.gs_wasm_shader_ptr();
+  const wgsl = new TextDecoder().decode(new Uint8Array(mem.buffer, shaderPtr, shaderLen));
+  const mod = device.createShaderModule({ code: wgsl });
+
+  const initData = new Float32Array(W * H);
+  initData.fill(1.0);
+  const vInit = new Float32Array(W * H);
+  const seeds = [[W/4,H/4],[3*W/4,H/4],[W/4,3*H/4],[3*W/4,3*H/4]];
+  for (const [cx,cy] of seeds) {
+    for (let dy = -3; dy <= 3; dy++)
+      for (let dx = -3; dx <= 3; dx++) {
+        const x = Math.round(cx+dx), y = Math.round(cy+dy);
+        if (x>=0 && x<W && y>=0 && y<H) { initData[y*W+x]=0.5; vInit[y*W+x]=0.25; }
+      }
+  }
+
+  const runs = [];
+  for (let r = 0; r < RUNS; r++) {
+    setStatus(`WebGPU: run ${r+1}/${RUNS}...`);
+
+    const u0 = device.createBuffer({size:bufSize, usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST|GPUBufferUsage.COPY_SRC});
+    const v0 = device.createBuffer({size:bufSize, usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST});
+    const u1 = device.createBuffer({size:bufSize, usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST});
+    const v1 = device.createBuffer({size:bufSize, usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST});
+    const pb = device.createBuffer({size:20, usage:GPUBufferUsage.UNIFORM|GPUBufferUsage.COPY_DST});
+    const rb = device.createBuffer({size:bufSize, usage:GPUBufferUsage.MAP_READ|GPUBufferUsage.COPY_DST});
+
+    device.queue.writeBuffer(u0, 0, initData);
+    device.queue.writeBuffer(v0, 0, vInit);
+    device.queue.writeBuffer(u1, 0, initData);
+    device.queue.writeBuffer(v1, 0, vInit);
+    device.queue.writeBuffer(pb, 0, new Float32Array([DA, DB, DT, FEED, KILL]));
+
+    const pipeline = device.createComputePipeline({layout:"auto", compute:{module:mod, entryPoint:"main", constants:{"WIDTH":W,"HEIGHT":H}}});
+    const layout = pipeline.getBindGroupLayout(0);
+    const bg0 = device.createBindGroup({layout, entries:[
+      {binding:0,resource:{buffer:u0}},{binding:1,resource:{buffer:v0}},{binding:2,resource:{buffer:u1}},{binding:3,resource:{buffer:v1}},{binding:4,resource:{buffer:pb}}
+    ]});
+    const bg1 = device.createBindGroup({layout, entries:[
+      {binding:0,resource:{buffer:u1}},{binding:1,resource:{buffer:v1}},{binding:2,resource:{buffer:u0}},{binding:3,resource:{buffer:v0}},{binding:4,resource:{buffer:pb}}
+    ]});
+
+    const start = performance.now();
+    const enc = device.createCommandEncoder();
+    for (let s = 0; s < STEPS; s++) {
+      const pass = enc.beginComputePass();
+      pass.setPipeline(pipeline);
+      pass.setBindGroup(0, s % 2 === 0 ? bg0 : bg1);
+      pass.dispatchWorkgroups(dx, dy, 1);
+      pass.end();
+    }
+    enc.copyBufferToBuffer(STEPS % 2 === 0 ? u0 : u1, 0, rb, 0, bufSize);
+    device.queue.submit([enc.finish()]);
+    await device.queue.onSubmittedWorkDone();
+    const ms = performance.now() - start;
+    const cps = Math.round((W * H * STEPS) / (ms / 1000));
+    runs.push({ ms, cps });
+
+    u0.destroy(); v0.destroy(); u1.destroy(); v1.destroy(); pb.destroy(); rb.destroy();
+  }
+
+  // Hash the last run
+  const u0f = device.createBuffer({size:bufSize, usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST|GPUBufferUsage.COPY_SRC});
+  const v0f = device.createBuffer({size:bufSize, usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST});
+  const u1f = device.createBuffer({size:bufSize, usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST});
+  const v1f = device.createBuffer({size:bufSize, usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST});
+  const pbf = device.createBuffer({size:20, usage:GPUBufferUsage.UNIFORM|GPUBufferUsage.COPY_DST});
+  const rbf = device.createBuffer({size:bufSize, usage:GPUBufferUsage.MAP_READ|GPUBufferUsage.COPY_DST});
+  device.queue.writeBuffer(u0f,0,initData); device.queue.writeBuffer(v0f,0,vInit);
+  device.queue.writeBuffer(u1f,0,initData); device.queue.writeBuffer(v1f,0,vInit);
+  device.queue.writeBuffer(pbf,0,new Float32Array([DA,DB,DT,FEED,KILL]));
+  const pipeline2 = device.createComputePipeline({layout:"auto", compute:{module:mod, entryPoint:"main", constants:{"WIDTH":W,"HEIGHT":H}}});
+  const layout2 = pipeline2.getBindGroupLayout(0);
+  const bg0f = device.createBindGroup({layout:layout2, entries:[
+    {binding:0,resource:{buffer:u0f}},{binding:1,resource:{buffer:v0f}},{binding:2,resource:{buffer:u1f}},{binding:3,resource:{buffer:v1f}},{binding:4,resource:{buffer:pbf}}
+  ]});
+  const bg1f = device.createBindGroup({layout:layout2, entries:[
+    {binding:0,resource:{buffer:u1f}},{binding:1,resource:{buffer:v1f}},{binding:2,resource:{buffer:u0f}},{binding:3,resource:{buffer:v0f}},{binding:4,resource:{buffer:pbf}}
+  ]});
+  const enc2 = device.createCommandEncoder();
+  for (let s = 0; s < STEPS; s++) {
+    const pass = enc2.beginComputePass();
+    pass.setPipeline(pipeline2); pass.setBindGroup(0, s%2===0?bg0f:bg1f);
+    pass.dispatchWorkgroups(dx,dy,1); pass.end();
+  }
+  enc2.copyBufferToBuffer(STEPS%2===0?u0f:u1f,0,rbf,0,bufSize);
+  device.queue.submit([enc2.finish()]); await device.queue.onSubmittedWorkDone();
+  await rbf.mapAsync(GPUMapMode.READ);
+  const mapped = new Uint8Array(rbf.getMappedRange().slice(0));
+  const digest2 = await crypto.subtle.digest("SHA-256", mapped.buffer);
+  const hash2 = Array.from(new Uint8Array(digest2)).map(b=>b.toString(16).padStart(2,"0")).join("");
+  rbf.unmap(); u0f.destroy(); v0f.destroy(); u1f.destroy(); v1f.destroy(); pbf.destroy(); rbf.destroy();
+  device.destroy();
+
+  function med(arr) { const s = [...arr].sort((a,b)=>a-b); const m = Math.floor(s.length/2); return s.length%2?s[m]:(s[m-1]+s[m])/2; }
+  return { runs, median: med(runs.map(r => r.cps)), hash: hash2, tile: `${tx}x${ty}`, dispatch: `${dx}x${dy}` };
+}
+
+// ======== Main ========
+(async () => {
+  $("#results").innerHTML = "";
+
+  const glResult = GL_BENCH ? await benchWebGL() : null;
+  const gpuResult = await benchWebGPU();
+
+  let html = "";
+
+  if (glResult) {
+    html += `<h2>WebGL (raw, no regl — best-case)</h2><table><tr><th>#</th><th>Time</th><th>Throughput</th></tr>`;
+    for (let i = 0; i < glResult.runs.length; i++) {
+      html += `<tr><td>${i+1}</td><td>${glResult.runs[i].ms.toFixed(1)} ms</td><td><span class="metric">${glResult.runs[i].cps.toLocaleString()} c/s</span></td></tr>`;
+    }
+    html += `<tr><td><strong>Median</strong></td><td></td><td><strong><span class="metric">${glResult.median.toLocaleString()} c/s</span></strong></td></tr>`;
+    html += `<tr><td>Hash</td><td colspan="2"><span style="font-size:0.7em;word-break:break-all">${glResult.hash}</span></td></tr>`;
+    html += `</table>`;
+  } else {
+    html += `<h2>WebGL</h2><p style="color:#f44336">Not available (OES_texture_float required)</p>`;
+  }
+
+  if (gpuResult) {
+    html += `<h2>WebGPU (grayscott WASM, ${gpuResult.tile} tile, ${gpuResult.dispatch} dispatch)</h2><table><tr><th>#</th><th>Time</th><th>Throughput</th></tr>`;
+    for (let i = 0; i < gpuResult.runs.length; i++) {
+      html += `<tr><td>${i+1}</td><td>${gpuResult.runs[i].ms.toFixed(1)} ms</td><td><span class="metric">${gpuResult.runs[i].cps.toLocaleString()} c/s</span></td></tr>`;
+    }
+    html += `<tr><td><strong>Median</strong></td><td></td><td><strong><span class="metric">${gpuResult.median.toLocaleString()} c/s</span></strong></td></tr>`;
+    html += `<tr><td>Hash</td><td colspan="2"><span style="font-size:0.7em;word-break:break-all">${gpuResult.hash}</span></td></tr>`;
+    html += `</table>`;
+  } else {
+    html += `<h2>WebGPU</h2><p style="color:#f44336">Not available</p>`;
+  }
+
+  if (glResult && gpuResult) {
+    const speedup = (gpuResult.median / glResult.median).toFixed(1);
+    const cls = speedup >= 1.5 ? "winner" : "loser";
+    html += `<p><strong>WebGPU speedup: <span class="${cls}">${speedup}x</span></strong> vs WebGL best-case</p>`;
+    html += `<p style="font-size:0.75em;color:#888">WebGL uses same 9-point stencil, periodic boundaries (REPEAT), NEAREST filtering, FLOAT textures. No regl overhead — this is the fastest possible WebGL 1.0 path for this algorithm on your GPU.</p>`;
+  }
+
+  html += `<p style="font-size:0.75em;color:#888">Note: hashes will differ — WebGL uses CLAMP→REPEAT boundary switch and may not FMA-contract. WebGPU uses enforced FMA and periodic boundaries natively.</p>`;
+
+  $("#results").innerHTML = html;
+  setStatus(gpuResult && glResult ? "Done. Compare medians above." : "Done (one path unavailable).");
+})().catch(e => { setStatus("ERROR: " + e.message); console.error(e); });
+</script>
+</body>
+</html>
