@@ -14,11 +14,11 @@ pub fn main() !void {
     const iterations: u32 = if (args.len > 3) try std.fmt.parseInt(u32, args[3], 10) else 50000;
 
     const f_min: f32 = if (args.len > 4) try std.fmt.parseFloat(f32, args[4]) else 0.01;
-    const f_max: f32 = if (args.len > 5) try std.fmt.parseFloat(f32, args[5]) else 0.10;
-    const k_min: f32 = if (args.len > 6) try std.fmt.parseFloat(f32, args[6]) else 0.045;
+    const f_max: f32 = if (args.len > 5) try std.fmt.parseFloat(f32, args[5]) else 0.08;
+    const k_min: f32 = if (args.len > 6) try std.fmt.parseFloat(f32, args[6]) else 0.03;
     const k_max: f32 = if (args.len > 7) try std.fmt.parseFloat(f32, args[7]) else 0.07;
 
-    const output_path = if (args.len > 8) args[8] else "map.pgm";
+    const output_bin = if (args.len > 8) args[8] else "pearson_map.bin";
 
     const da: f32 = 1.0;
     const db: f32 = 0.5;
@@ -38,7 +38,6 @@ pub fn main() !void {
     const init_ns = timer.read();
     std.debug.print("  Init: {d:.2}s\n", .{@as(f64, @floatFromInt(init_ns)) / 1e9});
 
-    // Run simulation in chunks with progress reporting
     const chunk_size: u32 = 5000;
     var remaining: u32 = iterations;
     var step_count: u32 = 0;
@@ -69,7 +68,6 @@ pub fn main() !void {
 
     const after_step_ns = timer.read();
 
-    // Read back V channel for PGM output
     const grid_bytes: usize = w * h * @sizeOf(f32);
     const v_back = try allocator.alloc(u8, grid_bytes);
     defer allocator.free(v_back);
@@ -87,23 +85,29 @@ pub fn main() !void {
 
     std.debug.print("Done: {d:.1}s ({d}B cells -> {d} cells/sec)\n", .{ total_s, @as(u64, @intFromFloat(total_cells)) / 1_000_000_000, rate });
 
-    // Write PGM (P5 binary grayscale from V channel, same as CPU map.zig)
-    const file = try std.fs.cwd().createFile(output_path, .{});
-    defer file.close();
-
-    const w_header = try std.fmt.allocPrint(allocator, "P5\n{d} {d}\n255\n", .{ w, h });
-    defer allocator.free(w_header);
-    try file.writeAll(w_header);
+    // Write raw u8 binary (V-channel, 0-255)
+    const bin_file = try std.fs.cwd().createFile(output_bin, .{});
+    defer bin_file.close();
 
     const v_floats = @as([*]const f32, @ptrCast(@alignCast(v_back.ptr)))[0 .. w * h];
-    var y: u32 = 0;
-    while (y < h) : (y += 1) {
-        var x: u32 = 0;
-        while (x < w) : (x += 1) {
-            const val: u8 = @intFromFloat(@min(@max(v_floats[y * w + x], 0.0), 1.0) * 255.0);
-            try file.writeAll(&.{val});
-        }
+    const bin_buf = try allocator.alloc(u8, w * h);
+    defer allocator.free(bin_buf);
+    for (v_floats, 0..) |v, i| {
+        bin_buf[i] = @intFromFloat(@min(@max(v, 0.0), 1.0) * 255.0);
     }
+    try bin_file.writeAll(bin_buf);
+    const bin_size = try bin_file.getEndPos();
+    std.debug.print("Saved: {s} ({d} bytes)\n", .{ output_bin, bin_size });
 
-    std.debug.print("Saved: {s}\n", .{output_path});
+    // Write sidecar JSON with metadata
+    const json_path = try std.fmt.allocPrint(allocator, "{s}.json", .{output_bin});
+    defer allocator.free(json_path);
+    const json_file = try std.fs.cwd().createFile(json_path, .{});
+    defer json_file.close();
+    const json_content = try std.fmt.allocPrint(allocator,
+        \\{{"width":{d},"height":{d},"f_min":{d},"f_max":{d},"k_min":{d},"k_max":{d},"iterations":{d},"channel":"V"}}
+    , .{ w, h, f_min, f_max, k_min, k_max, iterations });
+    defer allocator.free(json_content);
+    try json_file.writeAll(json_content);
+    std.debug.print("Saved: {s}\n", .{json_path});
 }
