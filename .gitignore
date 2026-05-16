@@ -1,6 +1,7 @@
 .zig-cache/
 zig-out/
 .opencode/
+.idea/
 *.o
 *.pgm
 *.exe
@@ -8,3 +9,6 @@ zig-out/
 *.wasm
 .loop.log
 vendor/
+notebooks/
+pearson_map.bin
+pearson_map.bin.json
