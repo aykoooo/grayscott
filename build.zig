@@ -402,18 +402,6 @@ pub fn build(b: *std.Build) void {
     bench_all_run.setEnvironmentVariable("PATH", new_path);
     b.step("bench-all", "All variants sweep: baseline/FMA/interleaved/earlysum/5point (same-process)").dependOn(&bench_all_run.step);
 
-    const loop_parse_mod = b.createModule(.{
-        .root_source_file = b.path("src/loop_parser.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-
-    const loop_parse_tests = b.addTest(.{
-        .root_module = loop_parse_mod,
-    });
-    const run_loop_parse_tests = b.addRunArtifact(loop_parse_tests);
-    b.step("test-loop-parse", "Run loop parser tests").dependOn(&run_loop_parse_tests.step);
-
     const bench_shape_mod = b.createModule(.{ .root_source_file = b.path("BENCHMARK/bench_shape_sweep.zig"), .target = target, .optimize = .ReleaseFast });
     bench_shape_mod.addIncludePath(b.path("vendor/wgpu-native/include"));
     bench_shape_mod.addLibraryPath(b.path("vendor/wgpu-native/lib"));
