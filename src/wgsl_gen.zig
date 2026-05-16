@@ -76,14 +76,14 @@ pub fn generateWgsl(buf: []u8, tile_x: u32, tile_y: u32) ![]const u8 {
         \\        tile_u[hi] = u_in[y_b * WIDTH + x];
         \\        tile_v[hi] = v_in[y_b * WIDTH + x];
         \\    }}
-\\    workgroupBarrier();
-\\    let u_c = tile_u[ti]; let v_c = tile_v[ti];
-    \\    let card_u = (tile_u[(lid.y+1u)*STRIDE+(lid.x)] + tile_u[(lid.y+1u)*STRIDE+(lid.x+2u)]) + (tile_u[(lid.y)*STRIDE+(lid.x+1u)] + tile_u[(lid.y+2u)*STRIDE+(lid.x+1u)]);
-    \\    let card_v = (tile_v[(lid.y+1u)*STRIDE+(lid.x)] + tile_v[(lid.y+1u)*STRIDE+(lid.x+2u)]) + (tile_v[(lid.y)*STRIDE+(lid.x+1u)] + tile_v[(lid.y+2u)*STRIDE+(lid.x+1u)]);
-    \\    let lap_u = fma(tile_u[(lid.y)*STRIDE+(lid.x+2u)]+tile_u[(lid.y)*STRIDE+(lid.x)]+tile_u[(lid.y+2u)*STRIDE+(lid.x+2u)]+tile_u[(lid.y+2u)*STRIDE+(lid.x)], 0.05, fma(card_u, 0.2, -u_c));
-    \\    let lap_v = fma(tile_v[(lid.y)*STRIDE+(lid.x+2u)]+tile_v[(lid.y)*STRIDE+(lid.x)]+tile_v[(lid.y+2u)*STRIDE+(lid.x+2u)]+tile_v[(lid.y+2u)*STRIDE+(lid.x)], 0.05, fma(card_v, 0.2, -v_c));
-    \\    let uvv = u_c * v_c * v_c;
-    \\    let u_next = u_c + params.dt * (params.da * lap_u - uvv + params.feed * (1.0 - u_c));
+        \\    workgroupBarrier();
+        \\    let u_c = tile_u[ti]; let v_c = tile_v[ti];
+        \\    let card_u = (tile_u[(lid.y+1u)*STRIDE+(lid.x)] + tile_u[(lid.y+1u)*STRIDE+(lid.x+2u)]) + (tile_u[(lid.y)*STRIDE+(lid.x+1u)] + tile_u[(lid.y+2u)*STRIDE+(lid.x+1u)]);
+        \\    let card_v = (tile_v[(lid.y+1u)*STRIDE+(lid.x)] + tile_v[(lid.y+1u)*STRIDE+(lid.x+2u)]) + (tile_v[(lid.y)*STRIDE+(lid.x+1u)] + tile_v[(lid.y+2u)*STRIDE+(lid.x+1u)]);
+        \\    let lap_u = fma(tile_u[(lid.y)*STRIDE+(lid.x+2u)]+tile_u[(lid.y)*STRIDE+(lid.x)]+tile_u[(lid.y+2u)*STRIDE+(lid.x+2u)]+tile_u[(lid.y+2u)*STRIDE+(lid.x)], 0.05, fma(card_u, 0.2, -u_c));
+        \\    let lap_v = fma(tile_v[(lid.y)*STRIDE+(lid.x+2u)]+tile_v[(lid.y)*STRIDE+(lid.x)]+tile_v[(lid.y+2u)*STRIDE+(lid.x+2u)]+tile_v[(lid.y+2u)*STRIDE+(lid.x)], 0.05, fma(card_v, 0.2, -v_c));
+        \\    let uvv = u_c * v_c * v_c;
+        \\    let u_next = u_c + params.dt * (params.da * lap_u - uvv + params.feed * (1.0 - u_c));
         \\    let v_next = v_c + params.dt * (params.db * lap_v + uvv - (params.feed + params.kill) * v_c);
         \\    let out_idx = y * WIDTH + x;
         \\    u_out[out_idx] = clamp(u_next, 0.0, 1.0);
@@ -638,12 +638,12 @@ pub fn generateWgslPearson(buf: []u8, w: u32, h: u32, tile_x: u32, tile_y: u32) 
         \\        tile_v[hi] = v_in[y_b * WIDTH + x];
         \\    }}
         \\    workgroupBarrier();
-\\    let u_c = tile_u[ti]; let v_c = tile_v[ti];
-    \\    let card_u = (tile_u[(lid.y+1u)*STRIDE+(lid.x)] + tile_u[(lid.y+1u)*STRIDE+(lid.x+2u)]) + (tile_u[(lid.y)*STRIDE+(lid.x+1u)] + tile_u[(lid.y+2u)*STRIDE+(lid.x+1u)]);
-    \\    let card_v = (tile_v[(lid.y+1u)*STRIDE+(lid.x)] + tile_v[(lid.y+1u)*STRIDE+(lid.x+2u)]) + (tile_v[(lid.y)*STRIDE+(lid.x+1u)] + tile_v[(lid.y+2u)*STRIDE+(lid.x+1u)]);
-    \\    let lap_u = fma(tile_u[(lid.y)*STRIDE+(lid.x+2u)]+tile_u[(lid.y)*STRIDE+(lid.x)]+tile_u[(lid.y+2u)*STRIDE+(lid.x+2u)]+tile_u[(lid.y+2u)*STRIDE+(lid.x)], 0.05, fma(card_u, 0.2, -u_c));
-    \\    let lap_v = fma(tile_v[(lid.y)*STRIDE+(lid.x+2u)]+tile_v[(lid.y)*STRIDE+(lid.x)]+tile_v[(lid.y+2u)*STRIDE+(lid.x+2u)]+tile_v[(lid.y+2u)*STRIDE+(lid.x)], 0.05, fma(card_v, 0.2, -v_c));
-    \\    let f = feed_map[y];
+        \\    let u_c = tile_u[ti]; let v_c = tile_v[ti];
+        \\    let card_u = (tile_u[(lid.y+1u)*STRIDE+(lid.x)] + tile_u[(lid.y+1u)*STRIDE+(lid.x+2u)]) + (tile_u[(lid.y)*STRIDE+(lid.x+1u)] + tile_u[(lid.y+2u)*STRIDE+(lid.x+1u)]);
+        \\    let card_v = (tile_v[(lid.y+1u)*STRIDE+(lid.x)] + tile_v[(lid.y+1u)*STRIDE+(lid.x+2u)]) + (tile_v[(lid.y)*STRIDE+(lid.x+1u)] + tile_v[(lid.y+2u)*STRIDE+(lid.x+1u)]);
+        \\    let lap_u = fma(tile_u[(lid.y)*STRIDE+(lid.x+2u)]+tile_u[(lid.y)*STRIDE+(lid.x)]+tile_u[(lid.y+2u)*STRIDE+(lid.x+2u)]+tile_u[(lid.y+2u)*STRIDE+(lid.x)], 0.05, fma(card_u, 0.2, -u_c));
+        \\    let lap_v = fma(tile_v[(lid.y)*STRIDE+(lid.x+2u)]+tile_v[(lid.y)*STRIDE+(lid.x)]+tile_v[(lid.y+2u)*STRIDE+(lid.x+2u)]+tile_v[(lid.y+2u)*STRIDE+(lid.x)], 0.05, fma(card_v, 0.2, -v_c));
+        \\    let f = feed_map[y];
         \\    let k = kill_map[x];
         \\    let uvv = u_c * v_c * v_c;
         \\    let u_next = u_c + params.dt * (params.da * lap_u - uvv + f * (1.0 - u_c));

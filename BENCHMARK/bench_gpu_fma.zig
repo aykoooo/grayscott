@@ -22,8 +22,11 @@ pub fn main() !void {
     if (gpu.gs_gpu_read_result(back.ptr, back.len) != gb) return error.ReadFail;
     var hasher = std.crypto.hash.sha2.Sha256.init(.{});
     hasher.update(back);
-    var hb: [32]u8 = undefined; hasher.final(&hb);
+    var hb: [32]u8 = undefined;
+    hasher.final(&hb);
     var hs: [64]u8 = undefined;
-    for (hb, 0..) |b,i| { _ = try std.fmt.bufPrint(hs[i*2..][0..2], "{x:0>2}", .{b}); }
+    for (hb, 0..) |b, i| {
+        _ = try std.fmt.bufPrint(hs[i * 2 ..][0..2], "{x:0>2}", .{b});
+    }
     std.debug.print("{{\"variant\":\"fma\",\"cells_per_second\":{d},\"hash\":\"{s}\",\"w\":{d},\"h\":{d},\"steps\":{d}}}\n", .{ cps, hs[0..], w, h, steps });
 }

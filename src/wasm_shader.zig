@@ -42,7 +42,8 @@ var g_buf: [16384]u8 = undefined;
 var g_init_info: InitInfo = undefined;
 
 fn buildWgsl(width: u32, height: u32, tile_x: u32, tile_y: u32) BufResult {
-    _ = width; _ = height;
+    _ = width;
+    _ = height;
     const result = wgsl.generateWgsl(&g_buf, tile_x, tile_y) catch return .{ .ptr = &g_buf, .len = 0 };
     return .{ .ptr = &g_buf, .len = @intCast(result.len) };
 }
@@ -184,10 +185,18 @@ export fn gs_wasm_init_ptr(width: u32, height: u32) u32 {
     return g_init_info.buffer_size;
 }
 
-export fn gs_wasm_init_tile_x() u32 { return g_init_info.tile_x; }
-export fn gs_wasm_init_tile_y() u32 { return g_init_info.tile_y; }
-export fn gs_wasm_init_dispatch_x() u32 { return g_init_info.dispatch_x; }
-export fn gs_wasm_init_dispatch_y() u32 { return g_init_info.dispatch_y; }
+export fn gs_wasm_init_tile_x() u32 {
+    return g_init_info.tile_x;
+}
+export fn gs_wasm_init_tile_y() u32 {
+    return g_init_info.tile_y;
+}
+export fn gs_wasm_init_dispatch_x() u32 {
+    return g_init_info.dispatch_x;
+}
+export fn gs_wasm_init_dispatch_y() u32 {
+    return g_init_info.dispatch_y;
+}
 
 export fn gs_wasm_build_standard_shader(width: u32, height: u32, tile_x: u32, tile_y: u32) u32 {
     const result = buildWgsl(width, height, tile_x, tile_y);
@@ -331,9 +340,17 @@ export fn gs_wasm_generate_seeds(width: u32, height: u32) u32 {
     return g_seed_n;
 }
 
-export fn gs_wasm_seed_cx() [*]const u32 { return &g_seed_cx; }
-export fn gs_wasm_seed_cy() [*]const u32 { return &g_seed_cy; }
-export fn gs_wasm_seed_sz() [*]const u32 { return &g_seed_sz; }
-export fn gs_wasm_seed_count() u32 { return g_seed_n; }
+export fn gs_wasm_seed_cx() [*]const u32 {
+    return &g_seed_cx;
+}
+export fn gs_wasm_seed_cy() [*]const u32 {
+    return &g_seed_cy;
+}
+export fn gs_wasm_seed_sz() [*]const u32 {
+    return &g_seed_sz;
+}
+export fn gs_wasm_seed_count() u32 {
+    return g_seed_n;
+}
 
 pub fn main() void {}

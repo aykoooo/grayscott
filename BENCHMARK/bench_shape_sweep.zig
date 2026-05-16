@@ -13,7 +13,10 @@ fn sweep(w: u32, h: u32, steps: u32) void {
     };
     for (shapes) |sh| {
         const ok = if (sh.vec2) gpu.gs_gpu_init_shape_vec2(w, h, sh.tx, sh.ty) else gpu.gs_gpu_init_shape(w, h, sh.tx, sh.ty);
-        if (!ok) { std.debug.print("init failed for {s}\n", .{sh.tag}); continue; }
+        if (!ok) {
+            std.debug.print("init failed for {s}\n", .{sh.tag});
+            continue;
+        }
         defer gpu.gs_gpu_free();
         var t = std.time.Timer.start() catch continue;
         gpu.gs_gpu_steps(1.0, 0.5, 1.0, 0.0545, 0.0620, steps);
@@ -28,7 +31,9 @@ fn sweep(w: u32, h: u32, steps: u32) void {
         var hb: [32]u8 = undefined;
         hasher.final(&hb);
         var hs: [64]u8 = undefined;
-        for (hb, 0..) |b, i| { _ = std.fmt.bufPrint(hs[i*2..][0..2], "{x:0>2}", .{b}) catch {}; }
+        for (hb, 0..) |b, i| {
+            _ = std.fmt.bufPrint(hs[i * 2 ..][0..2], "{x:0>2}", .{b}) catch {};
+        }
         std.debug.print("{{\"shape\":\"{s}\",\"cells_per_second\":{d},\"hash\":\"{s}\",\"w\":{d},\"h\":{d}}}\n", .{ sh.tag, cps, hs[0..], w, h });
     }
 }

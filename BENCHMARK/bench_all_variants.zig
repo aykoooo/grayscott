@@ -35,7 +35,9 @@ fn hashAndPrint(tag: []const u8, cps: u64, data: []const u8) void {
     var hb: [32]u8 = undefined;
     hasher.final(&hb);
     var hs: [64]u8 = undefined;
-    for (hb, 0..) |b, i| { _ = std.fmt.bufPrint(hs[i*2..][0..2], "{x:0>2}", .{b}) catch {}; }
+    for (hb, 0..) |b, i| {
+        _ = std.fmt.bufPrint(hs[i * 2 ..][0..2], "{x:0>2}", .{b}) catch {};
+    }
     std.debug.print("{{\"variant\":\"{s}\",\"cells_per_second\":{d},\"hash\":\"{s}\"}}\n", .{ tag, cps, hs[0..] });
 }
 

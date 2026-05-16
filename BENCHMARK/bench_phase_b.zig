@@ -24,8 +24,11 @@ pub fn main() !void {
 
 fn runBench(
     alloc: std.mem.Allocator,
-    w: u32, h: u32, steps: u32,
-    params: ParamsGpu, grid_bytes: usize,
+    w: u32,
+    h: u32,
+    steps: u32,
+    params: ParamsGpu,
+    grid_bytes: usize,
     tag: []const u8,
     initFn: *const fn (u32, u32) callconv(.c) bool,
 ) void {
@@ -61,7 +64,9 @@ fn runBench(
     var hb: [32]u8 = undefined;
     hasher.final(&hb);
     var hs: [64]u8 = undefined;
-    for (hb, 0..) |b, i| { _ = std.fmt.bufPrint(hs[i*2..][0..2], "{x:0>2}", .{b}) catch {}; }
+    for (hb, 0..) |b, i| {
+        _ = std.fmt.bufPrint(hs[i * 2 ..][0..2], "{x:0>2}", .{b}) catch {};
+    }
 
     std.debug.print("{{\"variant\":\"{s}\",\"cells_per_second\":{d},\"hash\":\"{s}\",\"w\":{d},\"h\":{d},\"steps\":{d}}}\n", .{
         tag, cps, hs[0..], w, h, steps,

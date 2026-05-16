@@ -39,7 +39,9 @@ pub fn main() !void {
     var hash_buf: [32]u8 = undefined;
     hasher.final(&hash_buf);
     var hash_str: [64]u8 = undefined;
-    for (hash_buf, 0..) |byte, i| { _ = try std.fmt.bufPrint(hash_str[i * 2 ..][0..2], "{x:0>2}", .{byte}); }
+    for (hash_buf, 0..) |byte, i| {
+        _ = try std.fmt.bufPrint(hash_str[i * 2 ..][0..2], "{x:0>2}", .{byte});
+    }
 
     std.debug.print("{{\"variant\":\"5point\",\"cells_per_second\":{d},\"hash\":\"{s}\",\"w\":{d},\"h\":{d},\"steps\":{d}}}\n", .{ cps, hash_str[0..], w, h, steps });
 }
