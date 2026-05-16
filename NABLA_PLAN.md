@@ -255,94 +255,7 @@ This means a 1024² simulation at 60fps could run ~110 steps per frame — real-
 
 ---
 
-## 🚀 How to Run Everything
-
-### Single Command
-
-```bash
-./run-ocloop.sh
-```
-
-That's it. No arguments. No per-phase invocations. The loop reads `.loop-prompt.md`
-(Manual mode), finds the first `[ ]` in this file, and works through every task
-sequentially until every line is either `[x]` or `[BLOCKED]`.
-
-### What Happens
-
-| Iteration | Agent does |
-|---|---|
-| Reads state | NABLA_PLAN.md → finds first `[ ]` (currently Phase 0.1) |
-| Assesses | Confirms which phase.task from the plan |
-| Researches | Web search if new technique (Phase 0 = download + replace DLL; skip search) |
-| Implements | Edits `src/wgsl_gen.zig`, `src/wasm_shader.zig`, `src/gpu/gpu.zig`, `build.zig` |
-| Tests | `zig build test` — must pass |
-| Benchmarks | 3× `zig build bench-gpu` — median cells/sec |
-| Verifies hash | Sacred hash `e16ed0e3c29cc50b5fa2b42791f31ab00b39d488e971b5d3c6017970ed037a43` |
-| Compares | > baseline + 10% = keep. Slower/broken hash = `git reset --hard HEAD`, retry |
-| Marks done | `[x]` in NABLA_PLAN.md, record in PERFORMANCE.md + KNOWLEDGE.md |
-| Commits | Git commit with conventional message |
-| Advances | Finds next `[ ]` → repeats |
-
-### Task Order (What The Loop Will Execute)
-
-```
-Phase 0.1 → 0.2 → 0.3      Fix Naga subgroups (upgrade wgpu-native)
-    ↓
-Phase 2.2 → 2.3 → 2.4 → 2.5  Complete subgroup integration (needs Phase 0)
-    ↓
-Phase 3.1                     Thread coarsening WITHOUT subgroups (runs regardless)
-    ↓
-Phase 3.2 → 3.3 → 3.4        Coarse+subgroups combined (needs Phase 0)
-    ↓
-Phase 4.1 → 4.2 → 4.3 → 4.4  Temporal blocking (needs Phase 0)
-    ↓
-Phase 5.1 → … → 5.5          Dynamic engine selection (runs regardless)
-```
-
-**If Phase 0 fails** (Naga stays blocked): The loop marks Phases 0, 2, 3.2+, 4 as
-`[BLOCKED]`, skips them, and continues with 3.1 and 5.x — the two phases that
-don't need subgroups.
-
-### Stall Prevention (Automatic)
-
-Per the loop prompt's stall rules: each sub-task gets up to 3 attempts.
-On the 4th attempt, it auto-escalates to `[BLOCKED: reason]` and moves on.
-
-Example: if `generateWgslCoarse()` produces broken hashes after 3 different
-implementation approaches, the agent marks it `[BLOCKED: hash mismatch after 3 attempts]`,
-logs findings to KNOWLEDGE.md, and proceeds to the next task.
-
-### Pre-Flight Checks
-
-```bash
-git status                    # clean working tree
-zig build test                # must pass
-zig build wasm-shader         # must build
-ls vendor/wgpu-native/lib/wgpu_native.dll   # must exist for GPU bench
-```
-
-### Post-Run Verification
-
-```bash
-git log --oneline -10         # review commits made
-zig build wasm-shader         # WASM module still builds
-PERFORMANCE.md                # benchmark results recorded
-NABLA_PLAN.md                 # all lines are [x] or [BLOCKED]
-git gc --aggressive           # compact loose objects from many loop commits
-```
-
-Optionally squash per-phase commits:
-```bash
-git rebase -i HEAD~N          # N = number of commits for one phase
-```
-
-### Expected Total Duration
-
-| Scenario | Est. wall-clock time |
-|---|---|
-| Naga fixed + all phases succeed | ~2–4 hours (6-8 loop iterations) |
-| Naga stays blocked | ~30 min (only Phase 3.1 + 5 runs) |
-| Naga fixed but some phases stall | ~2 hours (some blocked, rest done) |
+Tasks are tracked via Claude Code `/goal`. Use `[x]` / `[BLOCKED]` checkboxes in this file as the canonical todo list.
 
 ---
 
@@ -662,13 +575,6 @@ Phase 21 → Subgroup shuffle                    [browser-only, Naga-blocked nat
 
 Phase 18 result informs interpretation of 19-21.
 Phases 19-21 are sequential (each builds on learnings from prior phase).
-
-### ⚠️ LOOP ROUTING — READ THIS FIRST
-
-Phases 15–17 (Temporal Blocking, Spec Constants, Pearson) are **deferred** — do NOT
-execute them before Phases 18–21. The first unchecked task for the NEXT session is
-**Phase 18.1** (16×16 benchmark diagnostic). Start there. After Phase 21 completes,
-return to Phase 15 for re-evaluation.
 
 ---
 

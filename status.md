@@ -1,17 +1,48 @@
-# OPTIMIZATION_COMPLETE
+# Current Status — May 2026
 
-Gray-Scott GPU optimization is complete at **2026-05-03**.
+Gray-Scott GPU optimization pipeline is **mature but has remaining work**.
 
-## Final Results
-- **GPU**: 2,346,051,133 cells/sec at 256² × 500 steps
-- **Baseline**: 90,247,944 cells/sec
-- **Improvement**: +2,500% (26× baseline)
-- **Target**: >100M → exceeded by 23×
+## Performance Summary
 
-## Winning Techniques
-1. **Shared memory tiling** (8×8 workgroup, 10×10 tile with halo): +86%
-2. **Command buffer batching** (all 500 dispatches in one submit): +1,300% over tiling
+| Platform | Throughput | Hash |
+|---|---|---|
+| Chrome WebGPU | 5.2B cells/sec | `8a39d2ab...` |
+| Native (wgpu-native) | 2.35B cells/sec | `e16ed0e3...` (sacred) |
+| Firefox WebGL | 2.5B cells/sec | `f8598285...` |
+| CPU (ReleaseFast) | ~500M cells/sec | `9760dfcd...` |
 
-## Reference
-- GPU hash: `e16ed0e3c29cc50b5fa2b42791f31ab00b39d488e971b5d3c6017970ed037a43`
-- CPU hash: `9760dfcdb5f49c3bd738ab33afee8be84e56aa31fd2f389cde25faaaeb19bb95`
+Native performance is bottlenecked by 40W VBIOS power cap on RTX 4060 Laptop GPU. Browser WebGPU runs ~3x faster than native on identical hardware.
+
+## Completed
+
+- Shared memory tiling (auto-selected per resolution)
+- Command buffer batching (all dispatches in one submit) — single largest win (+1,300%)
+- FMA laplacian with early-sum instruction scheduling (+10-17%)
+- Dynamic workgroup selection across native + WASM paths
+- Pipeline override constants for WIDTH/HEIGHT
+- GPU Pearson map generation (up to 4096²)
+- Hash-based correctness verification at all resolutions
+- Chrome WebGPU browser benchmark with multi-run median statistics
+- WebGL vs WebGPU cross-browser characterization (Chrome, Firefox)
+- 16x16 SMEM diagnostic, 5-point stencil evaluation, ILP reordering test, subgroup shuffle browser variant
+
+## Remaining Work
+
+| Task | Status |
+|---|---|
+| Pearson Map Browser Integration (Phase 17) | Undone — docs + browser test + benchmark |
+| Coarse SMEM auto-selector (Phase 14.5) | BLOCKED — hash mismatch (`61720aab...` vs sacred) |
+| Temporal blocking without subgroups (Phase 15) | Undone — Tier 3 complexity |
+
+## Blocked (Naga/Compiler)
+
+- Subgroups native path — Naga tracking issue #5555 still open
+- f16 pipeline — two independent attempts confirm -11% regression
+- Coarse+subgroups, temporal blocking with subgroups — depend on Naga subgroups fix
+
+## Documentation
+
+- README.md — updated May 2026 with GPU/browser content
+- NABLA_PLAN.md — canonical phase tracking (Phases 0-21)
+- KNOWLEDGE.md — 31 iterations of accumulated findings
+- PERFORMANCE.md — full benchmark history

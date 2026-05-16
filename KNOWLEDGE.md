@@ -10,9 +10,9 @@ The agent reads it before each attempt to avoid retrying failed approaches.
 ---
 
 ## Current Setup Architecture (as of May 2026)
-- **Loop framework**: OCLoop (d3vr/ocloop) replaces custom bash loop
-- **Model chain**: kimi-k2.6 → deepseek-v3.2-thinking → gemma4 (auto-fallback in run-ocloop.sh)
-- **Benchmark gate**: Agent self-gates via prompt instructions (in .loop-prompt.md)
+- **Task tracking**: Claude Code `/goal` replaces OCLoop automation
+- **GPU**: NVIDIA RTX 4060 Laptop, wgpu-native v29/Vulkan
+- **Correctness gate**: SHA256 hash, benchmarks self-gated via Claude Code
 - **Performance tracker**: PERFORMANCE.md (benchmark history)
 - **Research notes**: RESEARCH_NOTES.md
 
